@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const hostBinary = process.env.CPA_HOST_EXE;
 const pluginLibrary = process.env.CPA_PLUGIN_LIBRARY;
 const storeSource = process.env.CPA_PLUGIN_STORE_SOURCE;
+const storeArchive = process.env.CPA_PLUGIN_STORE_ARCHIVE;
 const pluginID = 'freecredits2api';
 const loopback = '127.0.0.1';
 const model = 'Agents-A1';
@@ -75,6 +76,37 @@ function fixtureUpstream(executions) {
   });
 }
 
+async function fixtureStore(t, archivePath) {
+  const archive = await readFile(archivePath);
+  const name = basename(archivePath);
+  const checksums = (await readFile(join(dirname(resolve(archivePath)), 'checksums.txt'), 'utf8')).split(/\r?\n/);
+  const digest = createHash('sha256').update(archive).digest('hex');
+  assert.ok(checksums.includes(`${digest}  ${name}`), `${name} 的 SHA-256 与发布清单不符`);
+  const manifest = JSON.parse(await readFile(new URL('../../registry.json', import.meta.url), 'utf8'));
+  const goos = process.platform === 'win32' ? 'windows' : process.platform;
+  const goarch = { x64: 'amd64', arm64: 'arm64' }[process.arch];
+  const plugin = manifest.plugins.find((entry) => entry.id === pluginID);
+  assert.equal(name, `${pluginID}_${plugin.version}_${goos}_${goarch}.zip`);
+
+  const server = createServer((req, res) => {
+    if (req.url === '/registry.json') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(manifest));
+    } else if (req.url === `/${name}`) {
+      res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Length': archive.length });
+      res.end(archive);
+    } else {
+      res.writeHead(404).end();
+    }
+  });
+  const port = await listen(server);
+  t.after(() => close(server));
+  const origin = `http://${loopback}:${port}`;
+  manifest.schema_version = 2;
+  plugin.install = { type: 'direct', artifacts: [{ goos, goarch, url: `${origin}/${name}`, sha256: digest, size: archive.length }] };
+  return `${origin}/registry.json`;
+}
+
 function isolatedEnv() {
   return Object.fromEntries(Object.entries(process.env).filter(([key]) =>
     !/^(?:HOME_JWT$|DEPLOY$|MANAGEMENT_PASSWORD$|MANAGEMENT_STATIC_PATH$|(?:PGSTORE|GITSTORE|OBJECTSTORE)_)/i.test(key)));
@@ -94,7 +126,7 @@ async function eventually(check, message) {
   assert.fail(latestError ? `${message}（${latestError.message}）` : message);
 }
 
-async function startHost(t, upstreamPort) {
+async function startHost(t, upstreamPort, registrySource) {
   const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../dist');
   await mkdir(distDir, { recursive: true });
   const workspace = await mkdtemp(join(distDir, 'cpa-test-'));
@@ -106,7 +138,7 @@ async function startHost(t, upstreamPort) {
   });
 
   const plugins = join(workspace, 'plugins');
-  if (!storeSource) {
+  if (!registrySource) {
     const arch = { x64: 'amd64', arm64: 'arm64' }[process.arch];
     assert.ok(arch, `未配置 ${process.arch} 的 CPA 插件目录`);
     const platform = process.platform === 'win32' ? 'windows' : process.platform;
@@ -122,6 +154,12 @@ async function startHost(t, upstreamPort) {
   const clientKey = randomUUID();
   const config = join(workspace, 'config.yaml');
   const quote = JSON.stringify;
+  const fixtureAuth = storeArchive ? `
+  store-auth:
+    - match: ${quote(new URL(registrySource).origin + '/')}
+      type: none
+      apply-to: [registry, artifact]
+      allow-insecure: true` : '';
   await writeFile(config, `config-version: 8
 server:
   host: ${quote(loopback)}
@@ -136,7 +174,7 @@ oauth:
   auth-dir: ${quote(join(workspace, 'auths'))}
 plugins:
   enabled: true
-  dir: ${quote(plugins)}${storeSource && storeSource !== 'official' ? `\n  store-sources: [${quote(storeSource)}]` : ''}
+  dir: ${quote(plugins)}${registrySource && registrySource !== 'official' ? `\n  store-sources: [${quote(registrySource)}]` : ''}${fixtureAuth}
   configs:
     ${pluginID}:
       enabled: true
@@ -173,7 +211,7 @@ plugins:
       body: body && JSON.stringify(body),
       signal: AbortSignal.timeout(timeout),
     });
-    if (storeSource) {
+    if (registrySource) {
       await eventually(async () => {
         const response = await request('/v0/management/plugins');
         await response.body.cancel();
@@ -181,7 +219,7 @@ plugins:
       }, 'CPA 插件商店的管理接口未就绪');
       const store = await jsonResponse(await request(storePrefix, { timeout: 45_000 }));
       const offer = store.plugins.find((entry) => entry.id === pluginID &&
-        (storeSource === 'official' ? entry.source_id === 'official' : entry.source_url === storeSource));
+        (registrySource === 'official' ? entry.source_id === 'official' : entry.source_url === registrySource));
       assert.ok(offer, `插件商店未找到 ${pluginID}（${JSON.stringify(store.source_errors || [])}）`);
       const installed = await jsonResponse(await request(`${storePrefix}/${pluginID}/install?source=${encodeURIComponent(offer.source_id)}`, {
         method: 'POST', timeout: 90_000,
@@ -208,15 +246,17 @@ async function jsonResponse(response, expectedStatus = 200) {
 }
 
 test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推理', {
-  skip: !hostBinary && !pluginLibrary && !storeSource ? '设定 CPA_HOST_EXE，以及 CPA_PLUGIN_LIBRARY 或 CPA_PLUGIN_STORE_SOURCE 后运行' : false,
-  timeout: storeSource ? 180_000 : 60_000,
+  skip: !hostBinary && !pluginLibrary && !storeSource && !storeArchive ? '设定 CPA_HOST_EXE 和插件安装来源后运行' : false,
+  timeout: storeSource || storeArchive ? 180_000 : 60_000,
 }, async (t) => {
-  assert.ok(hostBinary && Boolean(pluginLibrary) !== Boolean(storeSource), '设置 CPA_HOST_EXE，并在 CPA_PLUGIN_LIBRARY 和 CPA_PLUGIN_STORE_SOURCE 中选择一个');
+  assert.ok(hostBinary && [pluginLibrary, storeSource, storeArchive].filter(Boolean).length === 1,
+    '设置 CPA_HOST_EXE，并从 CPA_PLUGIN_LIBRARY、CPA_PLUGIN_STORE_SOURCE、CPA_PLUGIN_STORE_ARCHIVE 选择一个');
   const executions = [];
   const upstream = fixtureUpstream(executions);
   const upstreamPort = await listen(upstream);
   t.after(() => close(upstream));
-  const request = await startHost(t, upstreamPort);
+  const registrySource = storeArchive ? await fixtureStore(t, storeArchive) : storeSource;
+  const request = await startHost(t, upstreamPort, registrySource);
   const manage = async (path, method = 'GET', body, expectedStatus = 200) =>
     jsonResponse(await request(`${managementPrefix}${path}`, { method, body }), expectedStatus);
   const modelIDs = async () => (await jsonResponse(await request('/v1/models'))).data.map(({ id }) => id);
