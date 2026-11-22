@@ -188,6 +188,7 @@ jobs:
           # 必须在汇总阶段生成：矩阵里每个平台各写一份同名文件会互相覆盖，
           # 导致部分 zip 的校验和丢失、宿主安装时直接报 checksum not found。
           go run ./scripts/packstore -checksums-dir assets
+          cp registry.json assets/registry.json
 
       - name: 生成 Release 正文（安装说明 + tag 注解）
         shell: bash
