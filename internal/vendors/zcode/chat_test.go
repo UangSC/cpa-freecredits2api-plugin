@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 对话转换测试：请求侧（tools / tool_calls / tool role / 多模态）与

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 本文件实现上游错误分类。

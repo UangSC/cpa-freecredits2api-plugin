@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 // postLoginCallback 调用管理路由并解出响应体。

@@ -1,7 +1,7 @@
 package tokenplan
 
 import (
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 func classify(status int, body []byte) *core.Failure {

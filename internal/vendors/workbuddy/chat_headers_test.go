@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // uuidV7HexRe 是官方客户端对 conversationRequestId 的硬校验正则

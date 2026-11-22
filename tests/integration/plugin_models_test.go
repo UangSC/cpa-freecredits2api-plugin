@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/app"
-	"cpa-tierbridge2api-plugin/internal/vendors/workbuddy"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/app"
+	"cpa-freecredits2api-plugin/internal/vendors/workbuddy"
 )
 
 // TestModelsForAuthIsolatesRealms 验证 realm 隔离的核心机制。
@@ -479,6 +479,7 @@ func TestDefaultStateDirFallback(t *testing.T) {
 	t.Setenv("USERPROFILE", tempHome)
 	t.Setenv("FREETIER2API_PLUGIN_HOME", "")
 	t.Setenv("TIERBRIDGE2API_PLUGIN_HOME", "")
+	t.Setenv("FREECREDITS2API_PLUGIN_HOME", "")
 
 	// 1. 无 ~/.cli-proxy-api → 回退 ~/.freetier2api-plugin
 	dir1 := app.DefaultStateDir()

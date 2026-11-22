@@ -1,8 +1,8 @@
 package app
 
 import (
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/taskmods"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/taskmods"
 )
 
 // BuiltinTaskModules 返回按当前已注册供应商装配好的全部任务/活动扩展模块。

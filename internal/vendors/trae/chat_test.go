@@ -14,9 +14,9 @@ import (
 	"sync"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 // stubHost 装配直连宿主桥（http.do 与 SSE 流式两条路径）。

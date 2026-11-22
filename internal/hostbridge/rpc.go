@@ -43,8 +43,8 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/internal/logger"
 )
 
 // Caller 是宿主回调的底层实现（由 main 注入 CGO 版本，测试注入内存版本）。

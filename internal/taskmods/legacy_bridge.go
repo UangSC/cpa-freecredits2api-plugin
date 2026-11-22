@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // legacyProfile 描述一个待桥接的既有任务渠道的展示与能力元信息。

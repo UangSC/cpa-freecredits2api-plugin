@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 const VendorID = "tokenplan"

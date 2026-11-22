@@ -3,7 +3,7 @@ package workbuddy
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 本文件测试登录的待授权判定。

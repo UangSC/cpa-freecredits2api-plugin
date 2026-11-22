@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 // 本文件承载 Qoder 的账号运营类可选能力：额度查询与签到。

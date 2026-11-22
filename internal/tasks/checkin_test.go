@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/auth"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/auth"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/state"
 )
 
 // 签到落库的行为测试。

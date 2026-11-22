@@ -195,7 +195,7 @@ jobs:
             echo '## 通过 CPA 插件商店安装（推荐）'
             echo
             echo '在 CPA 中启用包含本仓库 registry.json 的插件源。'
-            echo '在管理面板的插件商店中搜索 **TierBridge 2API**。'
+            echo '在管理面板的插件商店中搜索 **FreeCredits2API**。'
             echo
             echo '## 手动安装'
             echo

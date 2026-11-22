@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/admin"
-	"cpa-tierbridge2api-plugin/internal/auth"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/state"
-	"cpa-tierbridge2api-plugin/internal/tasks"
+	"cpa-freecredits2api-plugin/internal/admin"
+	"cpa-freecredits2api-plugin/internal/auth"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/internal/tasks"
 )
 
 // DefaultVersion 是未注入发行版号时的版本。

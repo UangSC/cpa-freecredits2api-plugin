@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // TestBuildQueueItemsCollapsesAggregatedTasks 验证聚合任务（RunCode）每个账号只入队一次，

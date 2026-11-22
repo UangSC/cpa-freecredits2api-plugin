@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/logger"
 )
 
 // 本文件实现成长任务的列表 / 报名 / 领奖接口。

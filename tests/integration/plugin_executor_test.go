@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/app"
-	"cpa-tierbridge2api-plugin/internal/state"
-	"cpa-tierbridge2api-plugin/internal/vendors/workbuddy"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/app"
+	"cpa-freecredits2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/internal/vendors/workbuddy"
 )
 
 // TestExecutorNonStreamingAggregatesUpstream 验证非流式执行的完整链路。

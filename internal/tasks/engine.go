@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/auth"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/logger"
-	"cpa-tierbridge2api-plugin/internal/safe"
-	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/internal/auth"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/state"
 )
 
 // 调度循环参数。

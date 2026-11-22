@@ -3,7 +3,7 @@ package admin
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 确定类失败不能拿上次读数顶：硬额度耗尽、凭证失效这类不会自己好转，

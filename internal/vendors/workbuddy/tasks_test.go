@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 // 本文件锁定每日活跃奖励（国际版签到）的关键判据。

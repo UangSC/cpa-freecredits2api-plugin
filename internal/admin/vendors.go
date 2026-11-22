@@ -3,7 +3,7 @@ package admin
 import (
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // vendorDescriptor 是供应商的展示描述（供页面下拉与分组用）。

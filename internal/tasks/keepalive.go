@@ -14,10 +14,10 @@ import (
 	"context"
 	"sync"
 
-	"cpa-tierbridge2api-plugin/internal/auth"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/logger"
-	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/auth"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/safe"
 )
 
 // KeepaliveResult 是一个账号的续期结果（管理端点 JSON 契约的一部分）。

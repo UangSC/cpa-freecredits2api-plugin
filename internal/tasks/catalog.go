@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // Catalog 汇总已注册供应商与扩展模块的任务族。

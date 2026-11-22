@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/internal/app"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/tests/testhost"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/internal/app"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/tests/testhost"
 )
 
 func TestPluginABIFlow(t *testing.T) {

@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/internal/logger"
-	"cpa-tierbridge2api-plugin/internal/safe"
-	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/state"
 )
 
 // 模型目录（Catalog）管理模型的注册视图：禁用集合、别名、额外模型、

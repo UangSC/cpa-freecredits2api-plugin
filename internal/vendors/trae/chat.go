@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 // ---- 端点与实例 profile ----

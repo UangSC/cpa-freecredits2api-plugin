@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 // traeQuotaFixture 是 Trae 额度接口的最小响应（product_type=2 为积分包）。

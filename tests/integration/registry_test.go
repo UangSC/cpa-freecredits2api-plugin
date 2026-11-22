@@ -20,9 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/admin"
-	"cpa-tierbridge2api-plugin/internal/app"
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/admin"
+	"cpa-freecredits2api-plugin/internal/app"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 var (

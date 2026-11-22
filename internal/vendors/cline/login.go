@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 // 本文件实现 Cline 的登录流程（WorkOS OAuth 2.0 设备码，RFC 8628）。

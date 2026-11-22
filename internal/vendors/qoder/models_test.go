@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 func TestExtractModelsUsesLargestAdvertisedContext(t *testing.T) {

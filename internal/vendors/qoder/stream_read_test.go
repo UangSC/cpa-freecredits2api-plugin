@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/safe"
 )
 
 func collectQoderLines(t *testing.T, body io.Reader) ([]string, error) {

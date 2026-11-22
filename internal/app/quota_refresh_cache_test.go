@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 func TestStoreCredentialOverwritesCachedToken(t *testing.T) {

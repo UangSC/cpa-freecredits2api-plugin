@@ -17,9 +17,9 @@ import (
 	"syscall"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/logger"
 )
 
 // removeAuthFile 会短暂等待 Windows 上的 CPA 文件监听器释放刚读过的凭证。

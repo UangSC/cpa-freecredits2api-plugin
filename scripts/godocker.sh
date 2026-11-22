@@ -25,7 +25,7 @@ CROSS=""
 
 exec docker run --rm \
   -v "$ROOT":/w \
-  -v tierbridge-gocache:/gocache \
+  -v freecredits2api-gocache:/gocache \
   -w /w \
   -e GOCACHE=/gocache \
   -e CGO_ENABLED=1 \

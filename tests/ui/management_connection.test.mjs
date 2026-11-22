@@ -10,7 +10,7 @@ test('插件业务 403 保留管理连接，CPA 认证失败停止自动请求',
   const requests = [];
   const authFailures = [];
   const responses = [
-    new Response('{"error":"该平台上下文固定"}', { status: 403, headers: { 'X-TierBridge-Response': 'management' } }),
+    new Response('{"error":"该平台上下文固定"}', { status: 403, headers: { 'X-FreeCredits2API-Response': 'management' } }),
     new Response('{"error":"invalid management key"}', { status: 401 }),
   ];
   const scope = vm.createContext({

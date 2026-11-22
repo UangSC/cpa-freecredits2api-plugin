@@ -1,7 +1,7 @@
 package cline
 
 import (
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 本文件实现 Cline 的上游错误分类。

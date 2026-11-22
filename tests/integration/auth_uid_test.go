@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 func TestAuthParseAlignsUIDWithFileName(t *testing.T) {

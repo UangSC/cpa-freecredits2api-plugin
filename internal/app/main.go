@@ -1,6 +1,6 @@
 package app
 
-// TierBridge 2API 将多个供应商接入 CPA。
+// FreeCredits2API 将多个供应商接入 CPA。
 //
 // 本文件包含插件身份、RPC 方法分发与注册响应。C ABI 在 cgo.go；
 // 供应商注册表由 App 构造，组合根在 vendors.go。
@@ -10,18 +10,18 @@ import (
 	"fmt"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/logger"
 )
 
 const (
 	// pluginID 已用于 CPA 配置、插件文件名与管理路由，升级沿用该 ID。
 	pluginID          = "freetier2api"
-	pluginDisplayName = "TierBridge 2API"
+	pluginDisplayName = "FreeCredits2API"
 	pluginAuthor      = "jiandanc/Likhixang/UangSC"
-	pluginRepository  = "https://github.com/UangSC/cpa-tierbridge2api-plugin"
+	pluginRepository  = "https://github.com/UangSC/cpa-freecredits2api-plugin"
 
 	providerKey           = core.ProviderKey
 	managementRoutePrefix = "/plugins/" + pluginID

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 本文件实现凭证的解析与写回。

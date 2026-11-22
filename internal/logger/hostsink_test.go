@@ -12,7 +12,7 @@ import (
 // hostLinePattern 只校验行结构（时间戳、请求 ID、级别、来源、正文），
 // 不锁定任何具体文案。
 var hostLinePattern = regexp.MustCompile(
-	`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] \[([^\]]*)\] \[([A-Z]+)\] \[tierbridge2api\] (.+)$`)
+	`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] \[([^\]]*)\] \[([A-Z]+)\] \[freecredits2api\] (.+)$`)
 
 // setupHostLog 在临时目录里造出 <base>/auths/logs/main.log，并让状态目录落在
 // <base>/freetier2api（自动探测就是从状态目录的父目录反推的）。

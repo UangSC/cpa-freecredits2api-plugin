@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // panicStreamVendor 在流式执行里 panic，模拟解析上游响应时的空指针一类故障。

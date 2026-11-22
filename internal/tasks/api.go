@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/safe"
 )
 
 // QueueRequest 是「启动任务队列」的请求参数。

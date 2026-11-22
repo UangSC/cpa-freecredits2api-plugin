@@ -8,7 +8,7 @@ package admin
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 // okQuota 造一份「查询成功」的结果。quotaResult.OK 是零值 false，漏填就等于

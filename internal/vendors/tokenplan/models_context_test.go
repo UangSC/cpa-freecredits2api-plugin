@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 func TestKnownModelsRetainVerifiedDefaultsWithoutMetadata(t *testing.T) {

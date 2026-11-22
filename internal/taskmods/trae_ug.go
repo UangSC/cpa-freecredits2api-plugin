@@ -11,8 +11,8 @@ import (
 	"context"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/vendors/trae"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/vendors/trae"
 )
 
 // ModuleIDTraeUG 是 Trae 国内版活动福利模块的全局唯一标识。

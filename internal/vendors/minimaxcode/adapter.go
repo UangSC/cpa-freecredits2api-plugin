@@ -6,8 +6,8 @@ import (
 	"context"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // adapter 是 core.Vendor 在 MiniMax Code 上的实现（每个区域一个实例）。

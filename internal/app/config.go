@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/admin"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/logger"
-	"cpa-tierbridge2api-plugin/internal/state"
-	"cpa-tierbridge2api-plugin/internal/tasks"
+	"cpa-freecredits2api-plugin/internal/admin"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/internal/tasks"
 )
 
 type pluginConfig = admin.PluginConfig

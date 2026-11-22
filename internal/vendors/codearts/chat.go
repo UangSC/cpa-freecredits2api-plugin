@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 type ChatRequest struct {

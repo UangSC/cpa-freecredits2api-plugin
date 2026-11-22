@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/logger"
 )
 
 func TestLogsPagingUsesLastDeliveredSequence(t *testing.T) {

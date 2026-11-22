@@ -155,7 +155,7 @@ func pruneLogFiles(dir string) {
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".log") ||
-			(!strings.HasPrefix(name, hostSource+"-") && !strings.HasPrefix(name, "freetier2api-")) {
+			(!strings.HasPrefix(name, hostSource+"-") && !strings.HasPrefix(name, "tierbridge2api-") && !strings.HasPrefix(name, "freetier2api-")) {
 			continue
 		}
 		info, errInfo := entry.Info()

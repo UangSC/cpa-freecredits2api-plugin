@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge/hostbridgetest"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge/hostbridgetest"
 )
 
 // TestCheckinDetectsNotClaimed 锁住「code=0 但 data.success=false」不算成功。

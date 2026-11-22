@@ -6,7 +6,7 @@ package auth
 import (
 	"sync"
 
-	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/safe"
 )
 
 // RunBatch 以固定并发度执行 fn，并保持输入顺序返回结果。

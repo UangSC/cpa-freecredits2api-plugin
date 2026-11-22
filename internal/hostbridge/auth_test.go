@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // TestListHostAuthsClaimsHijackedCredentials 验证被前置插件抢走的凭证仍被列出。

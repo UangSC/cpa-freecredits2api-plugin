@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // streamErrorFrame 是 issue #58 里上游用 HTTP 200 的 data: 帧返回的业务错误。

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 活动福利领取的行为测试。

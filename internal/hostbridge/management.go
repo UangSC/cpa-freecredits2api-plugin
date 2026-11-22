@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 // ManagementContext 为管理接口里的上游调用构造带超时与回调 ID 的上下文。

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 // TestAlignCredentialUIDRewritesCaseVariant 验证「大小写不敏感相等」的 uid

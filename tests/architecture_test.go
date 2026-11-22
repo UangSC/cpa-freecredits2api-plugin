@@ -18,8 +18,8 @@ import (
 // 本文件用静态检查守住分层边界、供应商目录白名单与测试布局。
 
 const (
-	vendorImportPrefix  = "cpa-tierbridge2api-plugin/internal/vendors/"
-	taskModImportPrefix = "cpa-tierbridge2api-plugin/internal/taskmods"
+	vendorImportPrefix  = "cpa-freecredits2api-plugin/internal/vendors/"
+	taskModImportPrefix = "cpa-freecredits2api-plugin/internal/taskmods"
 )
 
 func TestNoCrossVendorImports(t *testing.T) {
@@ -133,7 +133,7 @@ func TestTaskEngineVendorNeutral(t *testing.T) {
 		path := filepath.Join(dir, entry.Name())
 		for _, imp := range fileImports(t, path) {
 			if strings.HasPrefix(imp, vendorImportPrefix) ||
-				imp == "cpa-tierbridge2api-plugin/internal/admin" ||
+				imp == "cpa-freecredits2api-plugin/internal/admin" ||
 				imp == taskModImportPrefix ||
 				strings.HasPrefix(imp, taskModImportPrefix+"/") {
 				t.Errorf("%s：任务引擎不得依赖供应商、任务扩展包或管理接口（%s）", path, imp)
@@ -165,7 +165,7 @@ func TestCoreDoesNotImportUpperLayers(t *testing.T) {
 		}
 		path := filepath.Join("..", "internal", "core", entry.Name())
 		for _, imp := range fileImports(t, path) {
-			if strings.HasPrefix(imp, "cpa-tierbridge2api-plugin/internal/") {
+			if strings.HasPrefix(imp, "cpa-freecredits2api-plugin/internal/") {
 				t.Errorf("%s：internal/core 只能依赖 cpasdk 与标准库（发现 %s）", path, imp)
 			}
 		}
@@ -319,10 +319,10 @@ func TestLayerBoundaries(t *testing.T) {
 			}
 			path := filepath.Join(dir, entry.Name())
 			for _, imp := range fileImports(t, path) {
-				if !strings.HasPrefix(imp, "cpa-tierbridge2api-plugin/internal/") {
+				if !strings.HasPrefix(imp, "cpa-freecredits2api-plugin/internal/") {
 					continue
 				}
-				target := strings.TrimPrefix(imp, "cpa-tierbridge2api-plugin/internal/")
+				target := strings.TrimPrefix(imp, "cpa-freecredits2api-plugin/internal/")
 				if banned[strings.Split(target, "/")[0]] {
 					t.Errorf("%s：internal/%s 不得依赖 internal/%s", path, rule.pkg, target)
 				}

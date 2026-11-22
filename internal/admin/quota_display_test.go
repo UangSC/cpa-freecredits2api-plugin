@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // quotaVendor / plainVendor 用于验证「能力标志」与「查询结果」是两件事。

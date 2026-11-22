@@ -8,7 +8,7 @@ package core
 import (
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 // QuotaExpiryGroup 构造「套餐有效期」展示组。

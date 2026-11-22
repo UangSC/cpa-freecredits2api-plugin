@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 本文件把 ZCode 适配成 core.Vendor。

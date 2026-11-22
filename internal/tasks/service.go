@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/logger"
-	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/safe"
 )
 
 // Service 是一个 App 实例的任务引擎。

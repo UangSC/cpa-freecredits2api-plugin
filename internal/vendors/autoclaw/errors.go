@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // hardCreditMarkers 是余额/额度类文案（中英文，来自上游实测）。

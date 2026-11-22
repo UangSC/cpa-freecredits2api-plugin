@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 批量动作的凭证保活重试。额度查询那条已随实现下沉到 core/retry_test.go。

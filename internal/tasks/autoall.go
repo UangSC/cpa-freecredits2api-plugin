@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/safe"
 )
 
 // autoAllTimeout 是后台「一键完成」的总时限。

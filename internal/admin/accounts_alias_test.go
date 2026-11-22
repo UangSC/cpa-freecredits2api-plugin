@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 func accountAliasRequestBody(t *testing.T, fileID, alias string) pluginapi.ManagementRequest {

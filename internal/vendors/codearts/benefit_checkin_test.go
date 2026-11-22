@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
 // 使用宿主 HTTP 桥桩验证完整签到链路，不访问真实账号或领取真实权益。

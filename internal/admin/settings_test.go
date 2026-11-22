@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/state"
 )
 
 // TestNormalizePromptMode 锁住全局提示词过滤模式的取值集合。

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 type stubTaskModule struct {

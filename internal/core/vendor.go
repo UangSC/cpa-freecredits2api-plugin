@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 // Package core 是本插件的供应商无关骨架：共享类型、供应商接口与注册表。

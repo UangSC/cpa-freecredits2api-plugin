@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // TestParseCredentialBothShapes 验证凭证的两种形态都能解析。

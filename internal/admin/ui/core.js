@@ -369,7 +369,8 @@
       headers: headers,
       body: body ? JSON.stringify(body) : undefined
     }).then(function (resp) {
-      var fromPlugin = resp.headers.get("X-TierBridge-Response") === "management";
+      var fromPlugin = resp.headers.get("X-FreeCredits2API-Response") === "management" ||
+        resp.headers.get("X-TierBridge-Response") === "management";
       if (!fromPlugin && haltOnAuthFailure(resp.status)) return null;
       return resp.json().then(function (data) {
         if (!resp.ok) {

@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/state"
 )
 
 // CheckinTrigger 标识一次签到是谁触发的（写进历史的 trigger 字段）。

@@ -79,11 +79,16 @@ func TestParseClock(t *testing.T) {
 
 func TestDefaultStateDirHonoursEnv(t *testing.T) {
 	t.Setenv(legacyStateDirEnvOverride, "/tmp/legacy-state")
+	t.Setenv(previousStateDirEnvOverride, "/tmp/previous-state")
 	t.Setenv(StateDirEnvOverride, "/tmp/custom-state")
 	if got := DefaultStateDir(); got != "/tmp/custom-state" {
 		t.Fatalf("state dir = %q", got)
 	}
 	t.Setenv(StateDirEnvOverride, " ")
+	if got := DefaultStateDir(); got != "/tmp/previous-state" {
+		t.Fatalf("DefaultStateDir() = %q, want previous state directory", got)
+	}
+	t.Setenv(previousStateDirEnvOverride, "")
 	if got := DefaultStateDir(); got != "/tmp/legacy-state" {
 		t.Fatalf("DefaultStateDir() = %q, want legacy state directory", got)
 	}

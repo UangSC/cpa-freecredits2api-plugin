@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // panicTaskVendor 的 RunTask 在指定任务上 panic，其它任务正常完成。

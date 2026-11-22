@@ -18,8 +18,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/state"
 )
 
 // deleteTestVendor 的最小凭证解析：按 vendor / uid 两个字段即可支撑归属比对。

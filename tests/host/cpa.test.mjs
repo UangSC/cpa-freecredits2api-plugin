@@ -247,7 +247,7 @@ test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推�
   const locked = await request(`${managementPrefix}/models/context`, {
     method: 'POST', body: { model: scope, context_length: 1000 },
   });
-  assert.equal(locked.headers.get('X-TierBridge-Response'), 'management');
+  assert.equal(locked.headers.get('X-FreeCredits2API-Response'), 'management');
   assert.equal((await jsonResponse(locked, 403)).context_locked, true);
 
   const alias = 'cpa-smoke-model';

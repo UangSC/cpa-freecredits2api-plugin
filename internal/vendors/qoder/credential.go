@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 供应商实例标识。同时是凭证文件名前缀。

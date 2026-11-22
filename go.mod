@@ -1,3 +1,3 @@
-module cpa-tierbridge2api-plugin
+module cpa-freecredits2api-plugin
 
 go 1.22

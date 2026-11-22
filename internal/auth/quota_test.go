@@ -3,7 +3,7 @@ package auth
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 // TestTotalsRecognizesEveryVendorKeyFamily 锁定「剩余 / 总额」的键名词表。

@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/auth"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/internal/state"
-	"cpa-tierbridge2api-plugin/internal/tasks"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/auth"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/internal/tasks"
 )
 
 const (
@@ -359,8 +359,9 @@ func JSONResponse(status int, payload any) pluginapi.ManagementResponse {
 	return pluginapi.ManagementResponse{
 		StatusCode: status,
 		Headers: http.Header{
-			"Content-Type":          {"application/json; charset=utf-8"},
-			"X-Tierbridge-Response": {"management"},
+			"Content-Type":               {"application/json; charset=utf-8"},
+			"X-Freecredits2api-Response": {"management"},
+			"X-Tierbridge-Response":      {"management"},
 		},
 		Body: raw,
 	}

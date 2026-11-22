@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 	"sync"
 	"testing"
 	"time"

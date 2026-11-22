@@ -3,9 +3,9 @@ package admin
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/state"
 )
 
 // newTagTestCatalog 构造一个带 zcode 供应商与已注册模型的目录，用于渠道标识测试。

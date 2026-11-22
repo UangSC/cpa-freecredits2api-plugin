@@ -3,19 +3,19 @@ package app
 // 本文件是唯一的供应商组合根：新增/删除供应商只改这里的工厂列表。
 
 import (
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/vendors/autoclaw"
-	"cpa-tierbridge2api-plugin/internal/vendors/cline"
-	"cpa-tierbridge2api-plugin/internal/vendors/codearts"
-	"cpa-tierbridge2api-plugin/internal/vendors/minimaxcode"
-	"cpa-tierbridge2api-plugin/internal/vendors/opencodezen"
-	"cpa-tierbridge2api-plugin/internal/vendors/qoder"
-	"cpa-tierbridge2api-plugin/internal/vendors/qwenwork"
-	"cpa-tierbridge2api-plugin/internal/vendors/raccoon"
-	"cpa-tierbridge2api-plugin/internal/vendors/tokenplan"
-	"cpa-tierbridge2api-plugin/internal/vendors/trae"
-	"cpa-tierbridge2api-plugin/internal/vendors/workbuddy"
-	"cpa-tierbridge2api-plugin/internal/vendors/zcode"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/vendors/autoclaw"
+	"cpa-freecredits2api-plugin/internal/vendors/cline"
+	"cpa-freecredits2api-plugin/internal/vendors/codearts"
+	"cpa-freecredits2api-plugin/internal/vendors/minimaxcode"
+	"cpa-freecredits2api-plugin/internal/vendors/opencodezen"
+	"cpa-freecredits2api-plugin/internal/vendors/qoder"
+	"cpa-freecredits2api-plugin/internal/vendors/qwenwork"
+	"cpa-freecredits2api-plugin/internal/vendors/raccoon"
+	"cpa-freecredits2api-plugin/internal/vendors/tokenplan"
+	"cpa-freecredits2api-plugin/internal/vendors/trae"
+	"cpa-freecredits2api-plugin/internal/vendors/workbuddy"
+	"cpa-freecredits2api-plugin/internal/vendors/zcode"
 )
 
 // BuiltinFactories 返回内置供应商工厂（顺序即注册顺序）。

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 关停语义：插件被卸载时宿主会 dlclose 动态库，后台动作如果还在打宿主

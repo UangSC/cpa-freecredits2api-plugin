@@ -13,8 +13,8 @@ package tests
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/app"
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/app"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // TestSupportsQuotaIsGenericAcrossVendors 枚举全部内置供应商实例。

@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/hostbridge/hostbridgetest"
+	"cpa-freecredits2api-plugin/internal/hostbridge/hostbridgetest"
 )
 
 // modelConfigTopLevelFixture 是上游实测响应的结构（数值按真实值）。

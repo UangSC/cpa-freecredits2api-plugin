@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/logger"
 )
 
 // modelIndex 是某区域实例的「对外模型 ID / 上游 key → 上游 key」索引。

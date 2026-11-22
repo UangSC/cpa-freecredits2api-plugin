@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 )
 
 func TestExecutorRestoresOfficialModelWithoutChangingOtherFields(t *testing.T) {

@@ -45,8 +45,8 @@ package taskmods
 import (
 	"context"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/vendors/example"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/vendors/example"
 )
 
 const ModuleIDExampleSpring = "example.spring_campaign"

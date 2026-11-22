@@ -3,7 +3,7 @@ package zcode
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // TestInstancesExposeDomesticAndInternational 锁住两个独立供应商实例。

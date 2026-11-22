@@ -17,7 +17,7 @@ import (
 	"net/http"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // quotaBusinessCode 是「额度不足」的专用业务码（抓包实测）。

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 本文件实现 Trae 家族的上游错误分类：解析 Trae 家族上游错误码与业务码。

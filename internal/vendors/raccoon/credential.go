@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // VendorID 是供应商实例标识。同时是凭证文件名前缀（raccoon-<uid>.json）。

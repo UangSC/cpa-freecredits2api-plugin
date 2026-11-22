@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/tests/testhost"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/tests/testhost"
 )
 
 func TestRunChatCompletionsPreservesHostCallbackAndCancellation(t *testing.T) {

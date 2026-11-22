@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/safe"
 )
 
 // 本文件实现模型目录：从上游探测模型清单、缓存，并提供窗口与档位的查找链。

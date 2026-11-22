@@ -12,9 +12,9 @@ import (
 	"os"
 	"strings"
 
-	"cpa-tierbridge2api-plugin/internal/core"
-	"cpa-tierbridge2api-plugin/internal/hostbridge"
-	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-freecredits2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/logger"
 )
 
 // Resolver 由根层注入：把原始凭证解析成 (Credential, Vendor)。

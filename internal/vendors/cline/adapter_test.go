@@ -3,7 +3,7 @@ package cline
 import (
 	"testing"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 func TestConfigureBaseURLPerInstance(t *testing.T) {

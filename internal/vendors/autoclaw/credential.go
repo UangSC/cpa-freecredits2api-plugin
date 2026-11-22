@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 区域实例标识。同时是凭证文件名前缀（autoclawcn-<uid>.json 等）。
