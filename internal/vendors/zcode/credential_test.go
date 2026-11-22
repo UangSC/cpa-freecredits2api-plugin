@@ -243,7 +243,7 @@ func TestUserIDFromJWT(t *testing.T) {
 }
 
 func TestMergeStorageJSONPreservesUserKeys(t *testing.T) {
-	original := []byte(`{"type":"freetier","vendor":"zcode","api_key":"old","disabled":true,"note":"mine"}`)
+	original := []byte(`{"type":"freecredits2api","vendor":"zcode","api_key":"old","disabled":true,"note":"mine"}`)
 	updated := &Credential{APIKey: "new", JWTToken: "a.b.c", AuthMode: "oauth"}
 	merged, errMerge := MergeStorageJSON(original, updated)
 	if errMerge != nil {

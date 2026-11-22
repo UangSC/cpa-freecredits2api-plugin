@@ -11,10 +11,13 @@ import { fileURLToPath } from 'node:url';
 
 const hostBinary = process.env.CPA_HOST_EXE;
 const pluginLibrary = process.env.CPA_PLUGIN_LIBRARY;
+const storeSource = process.env.CPA_PLUGIN_STORE_SOURCE;
+const pluginID = 'freecredits2api';
 const loopback = '127.0.0.1';
 const model = 'Agents-A1';
 const upstreamKey = 'local-fixture-key';
-const managementPrefix = '/v0/management/plugins/freetier2api';
+const managementPrefix = `/v0/management/plugins/${pluginID}`;
+const storePrefix = '/v8/management/plugins/store';
 
 async function listen(server) {
   server.listen(0, loopback);
@@ -103,17 +106,20 @@ async function startHost(t, upstreamPort) {
   });
 
   const plugins = join(workspace, 'plugins');
-  const arch = { x64: 'amd64', arm64: 'arm64' }[process.arch];
-  assert.ok(arch, `未配置 ${process.arch} 的 CPA 插件目录`);
-  const platform = process.platform === 'win32' ? 'windows' : process.platform;
-  const platformDir = join(plugins, platform, arch);
-  await mkdir(platformDir, { recursive: true });
-  await copyFile(resolve(pluginLibrary), join(platformDir, `freetier2api${extname(pluginLibrary)}`));
+  if (!storeSource) {
+    const arch = { x64: 'amd64', arm64: 'arm64' }[process.arch];
+    assert.ok(arch, `未配置 ${process.arch} 的 CPA 插件目录`);
+    const platform = process.platform === 'win32' ? 'windows' : process.platform;
+    const platformDir = join(plugins, platform, arch);
+    await mkdir(platformDir, { recursive: true });
+    await copyFile(resolve(pluginLibrary), join(platformDir, `${pluginID}${extname(pluginLibrary)}`));
+  }
 
   const reserve = createServer();
   const port = await listen(reserve);
   await close(reserve);
   const secret = randomUUID();
+  const clientKey = randomUUID();
   const config = join(workspace, 'config.yaml');
   const quote = JSON.stringify;
   await writeFile(config, `config-version: 8
@@ -125,14 +131,14 @@ management:
   secret-key: ${quote(secret)}
   disable-control-panel: true
 access:
-  api-keys: [${quote(secret)}]
+  api-keys: [${quote(clientKey)}]
 oauth:
   auth-dir: ${quote(join(workspace, 'auths'))}
 plugins:
   enabled: true
-  dir: ${quote(plugins)}
+  dir: ${quote(plugins)}${storeSource && storeSource !== 'official' ? `\n  store-sources: [${quote(storeSource)}]` : ''}
   configs:
-    freetier2api:
+    ${pluginID}:
       enabled: true
       state_dir: ${quote(join(workspace, 'state'))}
       log_level: debug
@@ -158,15 +164,32 @@ plugins:
   };
   try {
     await once(child, 'spawn');
-    const request = (path, { method = 'GET', body, auth = true, headers = {} } = {}) => fetch(`http://${loopback}:${port}${path}`, {
+    const request = (path, { method = 'GET', body, auth = true, headers = {}, timeout = 5000 } = {}) => fetch(`http://${loopback}:${port}${path}`, {
       method,
       headers: {
-        ...(auth && { Authorization: `Bearer ${secret}` }),
+        ...(auth && { Authorization: `Bearer ${path.startsWith('/v1/') ? clientKey : secret}` }),
         ...(body && { 'Content-Type': 'application/json' }), ...headers,
       },
       body: body && JSON.stringify(body),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(timeout),
     });
+    if (storeSource) {
+      await eventually(async () => {
+        const response = await request('/v0/management/plugins');
+        await response.body.cancel();
+        return response.ok;
+      }, 'CPA 插件商店的管理接口未就绪');
+      const store = await jsonResponse(await request(storePrefix, { timeout: 45_000 }));
+      const offer = store.plugins.find((entry) => entry.id === pluginID &&
+        (storeSource === 'official' ? entry.source_id === 'official' : entry.source_url === storeSource));
+      assert.ok(offer, `插件商店未找到 ${pluginID}（${JSON.stringify(store.source_errors || [])}）`);
+      const installed = await jsonResponse(await request(`${storePrefix}/${pluginID}/install?source=${encodeURIComponent(offer.source_id)}`, {
+        method: 'POST', timeout: 90_000,
+      }));
+      assert.equal(installed.id, pluginID);
+      assert.equal(installed.restart_required, false);
+      assert.ok(installed.path);
+    }
     const statusResponse = await eventually(async () => {
       const response = await request(`${managementPrefix}/status`);
       return response.ok && response;
@@ -174,7 +197,7 @@ plugins:
     await statusResponse.body.cancel();
     return request;
   } catch (error) {
-    throw new Error(`${error.message}\n${output.replaceAll(secret, '[管理密钥]')}`, { cause: error });
+    throw new Error(`${error.message}\n${output.replaceAll(secret, '[管理密钥]').replaceAll(clientKey, '[API Key]')}`, { cause: error });
   }
 }
 
@@ -185,10 +208,10 @@ async function jsonResponse(response, expectedStatus = 200) {
 }
 
 test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推理', {
-  skip: !hostBinary && !pluginLibrary ? '设定 CPA_HOST_EXE 和 CPA_PLUGIN_LIBRARY 后运行' : false,
-  timeout: 60_000,
+  skip: !hostBinary && !pluginLibrary && !storeSource ? '设定 CPA_HOST_EXE，以及 CPA_PLUGIN_LIBRARY 或 CPA_PLUGIN_STORE_SOURCE 后运行' : false,
+  timeout: storeSource ? 180_000 : 60_000,
 }, async (t) => {
-  assert.ok(hostBinary && pluginLibrary, 'CPA_HOST_EXE 和 CPA_PLUGIN_LIBRARY 必须同时设置');
+  assert.ok(hostBinary && Boolean(pluginLibrary) !== Boolean(storeSource), '设置 CPA_HOST_EXE，并在 CPA_PLUGIN_LIBRARY 和 CPA_PLUGIN_STORE_SOURCE 中选择一个');
   const executions = [];
   const upstream = fixtureUpstream(executions);
   const upstreamPort = await listen(upstream);
@@ -198,7 +221,7 @@ test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推�
     jsonResponse(await request(`${managementPrefix}${path}`, { method, body }), expectedStatus);
   const modelIDs = async () => (await jsonResponse(await request('/v1/models'))).data.map(({ id }) => id);
 
-  const resource = await request('/v0/resource/plugins/freetier2api/console', { auth: false });
+  const resource = await request('/v0/resource/plugins/freecredits2api/console', { auth: false });
   assert.equal(resource.status, 200);
   assert.match(resource.headers.get('content-type'), /text\/html/);
   const page = await resource.text();
@@ -210,7 +233,8 @@ test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推�
 
   const status = await manage('/status');
   assert.equal(status.account_count, 0);
-  assert.equal(status.plugin, 'freetier2api');
+  assert.equal(status.plugin, pluginID);
+  assert.equal(status.version, `v${manifest.plugins[0].version}`);
   assert.ok(page.includes(`id="headerVersion">${status.version}</span>`));
   const { plugins } = await jsonResponse(await request('/v0/management/plugins'));
   const { metadata } = plugins.find((entry) => entry.id === status.plugin);
@@ -252,7 +276,7 @@ test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推�
 
   const alias = 'cpa-smoke-model';
   assert.equal((await manage('/models/alias', 'POST', { model: scope, alias })).alias, alias);
-  const reloaded = await request(`${managementPrefix}/config`, {
+  const reloaded = await request(`/v8/management/config/plugins/configs/${pluginID}`, {
     method: 'PATCH', body: { config_reloaded_at: new Date().toISOString() },
   });
   assert.equal(reloaded.status, 200, await reloaded.text());

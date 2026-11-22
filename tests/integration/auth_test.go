@@ -73,7 +73,7 @@ func TestAuthParseVendorOwnershipDiscrimination(t *testing.T) {
 
 	// 判据说明：这些用例**刻意不给 provider**（空串），模拟宿主还没把文件
 	// 归属给任何插件时的判定。给 provider 会让 workbuddy 的
-	// `provider == "freetier"` 兜底把一切都收下，测试就测不出判别力了。
+	// `provider == "freecredits2api"` 兜底把一切都收下，测试就测不出判别力了。
 	cases := []struct {
 		name       string
 		fileName   string

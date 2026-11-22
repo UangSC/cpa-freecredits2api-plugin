@@ -46,10 +46,10 @@ func TestTasksModulesRouteAndRegistration(t *testing.T) {
 
 	foundRoute, foundManual := false, false
 	for _, route := range service.Registration().Routes {
-		if route.Path == "/plugins/freetier2api/tasks/modules" && route.Method == "GET" {
+		if route.Path == "/plugins/freecredits2api/tasks/modules" && route.Method == "GET" {
 			foundRoute = true
 		}
-		if route.Path == "/plugins/freetier2api/demo/claim" && route.Method == "POST" {
+		if route.Path == "/plugins/freecredits2api/demo/claim" && route.Method == "POST" {
 			foundManual = true
 		}
 	}
@@ -63,7 +63,7 @@ func TestTasksModulesRouteAndRegistration(t *testing.T) {
 		t.Fatal("没有排程能力的手动模块不应进入排程设置")
 	}
 
-	raw, err := service.Handle([]byte(`{"method":"GET","path":"/plugins/freetier2api/tasks/modules"}`))
+	raw, err := service.Handle([]byte(`{"method":"GET","path":"/plugins/freecredits2api/tasks/modules"}`))
 	if err != nil {
 		t.Fatalf("Handle /tasks/modules: %v", err)
 	}

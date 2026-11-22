@@ -56,7 +56,7 @@ func TestCheckinAndDisplayResolveSameIdentity(t *testing.T) {
 	setupTestPlugin(t)
 
 	// Qoder 凭证（UID 取自文件名）——这正是出问题的形态。
-	const qoderCredential = `{"type":"freetier","vendor":"qodercn","region":"cn",
+	const qoderCredential = `{"type":"freecredits2api","vendor":"qodercn","region":"cn",
 		"device_token":"dt-abc","refresh_token":"drt-xyz","label":"nick"}`
 	entry := core.HostAuth{
 		ID:        "qodercn-nick1456600333",
@@ -89,7 +89,7 @@ func TestParseVendorCredentialFillsFileID(t *testing.T) {
 	setupTestPlugin(t)
 
 	// WorkBuddy 的 UID 是上游 UUID；FileID 仍必须是文件名。
-	const wbCredential = `{"type":"freetier","vendor":"workbuddycn",
+	const wbCredential = `{"type":"freecredits2api","vendor":"workbuddycn",
 		"auth":{"accessToken":"at","refreshToken":"rt","realm":"cn"},
 		"account":{"uid":"79fdc1fc-de43-40da-b6f0-fe05d9e4367b"}}`
 	credential, okParse := testApp.Registry().ParseCredential([]byte(wbCredential), "workbuddycn-79fdc1fc.json", nil)

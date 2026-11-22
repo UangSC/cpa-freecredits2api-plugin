@@ -99,7 +99,7 @@ func (r *Registry) ByID(id string) (Vendor, bool) {
 // 声明或文件名里出现的是**家族**标识时（拆分前的旧 ID、cn / global 区域
 // 别名），交给各实例自己的 Match 定位；现役 ID 保持「声明即归属」的原语义。
 func (r *Registry) Resolve(fileName, provider string, raw map[string]any) (Vendor, bool) {
-	if r == nil {
+	if r == nil || IsLegacyProvider(provider) || IsLegacyProvider(GetString(raw, "type")) || IsLegacyProvider(GetString(raw, "provider")) {
 		return nil, false
 	}
 	if raw != nil {

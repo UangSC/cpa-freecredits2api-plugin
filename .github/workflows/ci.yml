@@ -67,17 +67,17 @@ jobs:
     # 仅在推送 v* tag 或手动触发时才执行多平台重型构建，避免日常 PR/commit 消耗 macOS/Windows 配额
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
-    # darwin/amd64 与 windows/amd64 属于尽力而为的平台：失败不阻塞其他平台出产物与 Release。
+    # Windows amd64 与两个 Linux 架构是必备产物，macOS 按构建结果附加。
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  goos: linux,   goarch: amd64, ext: so,    cc: gcc,                   experimental: false }
-          - { os: ubuntu-latest,  goos: linux,   goarch: arm64, ext: so,    cc: aarch64-linux-gnu-gcc, experimental: false }
-          - { os: macos-15,       goos: darwin,  goarch: arm64, ext: dylib, cc: clang,                 experimental: false }
+          - { os: ubuntu-latest,  goos: linux,   goarch: amd64, ext: so,    cc: 'zig cc -target x86_64-linux-gnu.2.17',  experimental: false }
+          - { os: ubuntu-latest,  goos: linux,   goarch: arm64, ext: so,    cc: 'zig cc -target aarch64-linux-gnu.2.17', experimental: false }
+          - { os: macos-15,       goos: darwin,  goarch: arm64, ext: dylib, cc: clang,                 experimental: true }
           - { os: macos-15,       goos: darwin,  goarch: amd64, ext: dylib, cc: 'clang -arch x86_64', experimental: true }
-          - { os: windows-latest, goos: windows, goarch: amd64, ext: dll,   cc: gcc,                   experimental: true }
+          - { os: windows-latest, goos: windows, goarch: amd64, ext: dll,   cc: gcc,                   experimental: false }
     steps:
       - uses: actions/checkout@v4
 
@@ -86,17 +86,23 @@ jobs:
           go-version: '1.24'
           cache: false
 
-      - name: 安装交叉编译器（linux/arm64）
-        if: matrix.cc == 'aarch64-linux-gnu-gcc'
+      - name: 准备 Linux glibc 2.17 编译器
+        if: matrix.goos == 'linux'
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          set -euo pipefail
+          archive="$RUNNER_TEMP/zig-x86_64-linux-0.15.2.tar.xz"
+          curl --fail --location --retry 2 'https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz' -o "$archive"
+          printf '%s  %s\n' '02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239' "$archive" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/cpa-zig"
+          tar -xf "$archive" -C "$RUNNER_TEMP/cpa-zig" --strip-components=1
+          echo "$RUNNER_TEMP/cpa-zig" >> "$GITHUB_PATH"
 
       - name: 环境信息
         shell: bash
         run: |
           go version
-          ${{ matrix.cc }} --version | head -1
+          ${{ matrix.cc }} --version | sed -n '1p'
 
       - name: 构建 c-shared 插件
         shell: bash
@@ -111,11 +117,16 @@ jobs:
           mkdir -p dist
           ldflags="-s -w"
           if [[ -n "$VERSION_TAG" ]]; then
+            source_version=$(awk -F '"' '/^const DefaultVersion = / {print $2}' internal/app/app.go)
+            if [[ "$VERSION_TAG" != "$source_version" ]]; then
+              echo "发版标签 $VERSION_TAG 与源码版本 $source_version 不一致"
+              exit 1
+            fi
             ldflags+=" -X main.pluginVersion=$VERSION_TAG"
           fi
           go build -buildmode=c-shared -trimpath \
             -ldflags "$ldflags" \
-            -o "dist/freetier2api-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.ext }}" .
+            -o "dist/freecredits2api-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.ext }}" .
           ls -la dist
 
       # 插件商店安装要求归档名 {id}_{version}_{goos}_{goarch}.zip，
@@ -129,8 +140,8 @@ jobs:
           set -euo pipefail
           # 归档名里的版本号是 tag 去掉前导 v（宿主按同样规则从 tag 推导）。
           go run ./scripts/packstore \
-            -lib "dist/freetier2api-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.ext }}" \
-            -id freetier2api \
+            -lib "dist/freecredits2api-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.ext }}" \
+            -id freecredits2api \
             -version "${VERSION_TAG#v}" \
             -goos ${{ matrix.goos }} \
             -goarch ${{ matrix.goarch }} \
@@ -141,8 +152,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          name: freetier2api-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/freetier2api_*_${{ matrix.goos }}_${{ matrix.goarch }}.zip
+          name: freecredits2api-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/freecredits2api_*_${{ matrix.goos }}_${{ matrix.goarch }}.zip
           if-no-files-found: error
 
   release:
@@ -192,22 +203,22 @@ jobs:
           {
             echo '## 通过 CPA 插件商店安装（推荐）'
             echo
-            echo '在 CPA 中启用包含本仓库 registry.json 的插件源。'
-            echo '在管理面板的插件商店中搜索 **FreeCredits2API**。'
+            echo '在 CPA 插件商店中搜索 **FreeCredits2API** 并安装。'
+            echo '默认目录未显示时，可先添加本仓库的插件源再安装。'
             echo
             echo '## 手动安装'
             echo
-            echo '下载对应平台的 `freetier2api_<版本>_<goos>_<goarch>.zip`，解压后把其中的'
-            echo '`freetier2api` 动态库放进 CPA 的 `plugins.dir/<goos>/<goarch>/`。'
-            echo '归档里已经用的是宿主要求的 `freetier2api{ext}` 文件名，解压后无需改名。'
+            echo '下载对应平台的 `freecredits2api_<版本>_<goos>_<goarch>.zip`，解压后把其中的'
+            echo '`freecredits2api` 动态库放进 CPA 的 `plugins.dir/<goos>/<goarch>/`。'
+            echo '归档里已经用的是宿主要求的 `freecredits2api{ext}` 文件名，解压后无需改名。'
             echo
             echo '| 平台 | 下载归档 |'
             echo '| --- | --- |'
-            echo '| Linux x86_64 | `freetier2api_<版本>_linux_amd64.zip` |'
-            echo '| Linux arm64 | `freetier2api_<版本>_linux_arm64.zip` |'
-            echo '| macOS Apple Silicon | `freetier2api_<版本>_darwin_arm64.zip` |'
-            echo '| macOS Intel | `freetier2api_<版本>_darwin_amd64.zip` |'
-            echo '| Windows x64 | `freetier2api_<版本>_windows_amd64.zip` |'
+            echo '| Linux x86_64 | `freecredits2api_<版本>_linux_amd64.zip` |'
+            echo '| Linux arm64 | `freecredits2api_<版本>_linux_arm64.zip` |'
+            echo '| macOS Apple Silicon | `freecredits2api_<版本>_darwin_arm64.zip` |'
+            echo '| macOS Intel | `freecredits2api_<版本>_darwin_amd64.zip` |'
+            echo '| Windows x64 | `freecredits2api_<版本>_windows_amd64.zip` |'
             echo
             echo '`checksums.txt` 可用于核对归档完整性；配置与账号导入见仓库 README。'
             echo
@@ -224,6 +235,10 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "已存在 $TAG 的 Release，保留已发布安装包。"
+            exit 0
+          fi
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \

@@ -366,16 +366,20 @@
   }
 
   var HOST_PREFIX = "@host";
-  function hostPath(path) { return HOST_PREFIX + path; }
+  var HOST_V8_PREFIX = "@host8";
+  function hostPath(path, version) { return (version === 8 ? HOST_V8_PREFIX : HOST_PREFIX) + path; }
 
   function api(method, path, body) {
     if (stopped) return Promise.resolve(null);
     var key = managementKey();
     if (!key) return Promise.resolve(null);
     var headers = { "Content-Type": "application/json", "Authorization": "Bearer " + key };
-    var url = path.indexOf(HOST_PREFIX) === 0
-      ? HOST_MGMT + path.slice(HOST_PREFIX.length)
-      : MGMT + path;
+    var url = MGMT + path;
+    if (path.indexOf(HOST_V8_PREFIX) === 0) {
+      url = "/v8/management" + path.slice(HOST_V8_PREFIX.length);
+    } else if (path.indexOf(HOST_PREFIX) === 0) {
+      url = HOST_MGMT + path.slice(HOST_PREFIX.length);
+    }
     return fetch(url, {
       method: method,
       headers: headers,

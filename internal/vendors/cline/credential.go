@@ -184,7 +184,7 @@ func hasForeignMarker(raw map[string]any) bool {
 	// 其它供应商的 type 声明。
 	if typeVal, ok := raw["type"].(string); ok {
 		trimmed := strings.ToLower(strings.TrimSpace(typeVal))
-		if trimmed != "" && trimmed != "freetier" && trimmed != "cline" {
+		if trimmed != "" && trimmed != core.ProviderKey && trimmed != "cline" {
 			return true
 		}
 	}

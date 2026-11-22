@@ -100,7 +100,7 @@ func LooksLikeCredential(raw map[string]any, fileName, provider string) bool {
 // StorageJSON 序列化为规范的凭证存储格式。
 func (c *Credential) StorageJSON() ([]byte, error) {
 	m := map[string]any{
-		"type":              "freetier",
+		"type":              core.ProviderKey,
 		"vendor":            VendorID,
 		"user_id":           c.UserID,
 		"user_name":         c.UserName,

@@ -26,7 +26,7 @@ func TestTokenPlanAuthorizationDraftAndAtomicSave(t *testing.T) {
 			host := installFakeHost(t)
 			setupTestPlugin(t)
 			if mode == "existing-key" {
-				host.addAccount("existing", "tokenplan-existing.json", `{"type":"freetier","vendor":"tokenplan","api_key":"sk-testabcd","note":"keep","disabled":true}`)
+				host.addAccount("existing", "tokenplan-existing.json", `{"type":"freecredits2api","vendor":"tokenplan","api_key":"sk-testabcd","note":"keep","disabled":true}`)
 			}
 			saves := []pluginapi.HostAuthSaveRequest{}
 			hostbridge.Configure(func(callbackID, method string, payload any) (json.RawMessage, error) {

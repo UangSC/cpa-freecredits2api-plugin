@@ -15,7 +15,7 @@ import (
 	"cpa-freecredits2api-plugin/internal/state"
 )
 
-// PluginConfig 是 plugins.configs.freetier2api 解析出的有效全局配置。
+// PluginConfig 是 plugins.configs.freecredits2api 解析出的有效全局配置。
 type PluginConfig struct {
 	// EnabledRealms 是启用的域：逗号分隔的 cn / global 子集。
 	EnabledRealms []string
@@ -58,8 +58,8 @@ const (
 	DefaultCheckinAt = "10:00"
 	// CheckinHistoryLimitKey 是签到历史条数的配置键。
 	CheckinHistoryLimitKey = "checkin_history_limit"
-	// DefaultStateDirName 沿用原目录，以便升级时继续读取现有状态。
-	DefaultStateDirName = ".freetier2api-plugin"
+	// DefaultStateDirName 以新插件标识命名，避免与旧插件共用状态。
+	DefaultStateDirName = "." + core.PluginID + "-plugin"
 	// StateDirEnvOverride 是状态目录的环境变量覆盖项。
 	StateDirEnvOverride         = "FREECREDITS2API_PLUGIN_HOME"
 	previousStateDirEnvOverride = "TIERBRIDGE2API_PLUGIN_HOME"
@@ -137,7 +137,7 @@ func DefaultStateDir() string {
 	if home, errHome := os.UserHomeDir(); errHome == nil && strings.TrimSpace(home) != "" {
 		cpaDir := filepath.Join(home, ".cli-proxy-api")
 		if info, errStat := os.Stat(cpaDir); errStat == nil && info.IsDir() {
-			return filepath.Join(cpaDir, "freetier2api")
+			return filepath.Join(cpaDir, core.PluginID)
 		}
 		return filepath.Join(home, DefaultStateDirName)
 	}

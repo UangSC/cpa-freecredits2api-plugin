@@ -77,7 +77,7 @@ func LoginStart(ctx context.Context, cfg Config, store *SessionStore) (*pluginap
 	})
 
 	return &pluginapi.AuthLoginStartResponse{
-		Provider:  "freetier",
+		Provider:  core.ProviderKey,
 		URL:       loginURL,
 		State:     sessionID,
 		ExpiresAt: time.Now().Add(15 * time.Minute),
@@ -494,7 +494,7 @@ func (s *SessionStore) completeLogin(ctx context.Context, matched *PendingSessio
 	}
 
 	storageMap := map[string]any{
-		"type":          "freetier",
+		"type":          core.ProviderKey,
 		"vendor":        matched.VendorID,
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
@@ -517,7 +517,7 @@ func (s *SessionStore) completeLogin(ctx context.Context, matched *PendingSessio
 
 	fileName := matched.VendorID + "-" + uid + ".json"
 	authData := &pluginapi.AuthData{
-		Provider:    "freetier",
+		Provider:    core.ProviderKey,
 		ID:          matched.VendorID + "-" + uid,
 		FileName:    fileName,
 		Label:       label,

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
@@ -19,7 +20,10 @@ import (
 // （见 ProviderKey 的说明），因此多个供应商必须共存于一个插件内。若没有
 // 这层抽象，每加一个供应商都要在根层的能力文件里改一处 switch。
 
-// ProviderKey 是本插件在 CPA 里占用的 provider 键，**所有供应商共用**。
+// PluginID 是 CPA 插件发现、配置、安装归档和管理路由使用的标识。
+const PluginID = "freecredits2api"
+
+// ProviderKey 是本插件在 CPA 里占用的认证、执行和额度标识，所有供应商共用。
 //
 // 宿主的 auth.identifier 只返回单个字符串、注册期调一次永久缓存，且与
 // auth 文件的 type 字段严格相等才认领该文件（internal/pluginhost/auth_provider.go
@@ -28,7 +32,17 @@ import (
 //
 // 因此供应商的区分落在**凭证文件名前缀**（workbuddycn-<uid>.json）与文件内的
 // vendor 字段上，而不是 provider key。
-const ProviderKey = "freetier"
+const ProviderKey = PluginID
+
+// IsLegacyProvider 识别旧插件凭证，只供显式导入和旧插件归属隔离使用。
+func IsLegacyProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "freetier", "freetier2api":
+		return true
+	default:
+		return false
+	}
+}
 
 // VendorKey 是凭证内标识供应商的字段名。
 //

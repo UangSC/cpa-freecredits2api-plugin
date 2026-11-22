@@ -134,7 +134,7 @@ func TestLooksLikeCredential(t *testing.T) {
 		// 强证据：显式声明。
 		{"host provider hint", map[string]any{}, "x.json", ProviderKey, true},
 		{"type field", map[string]any{"type": ProviderKey}, "x.json", "", true},
-		{"type field uppercase", map[string]any{"type": "FreeTier"}, "x.json", "", true},
+		{"type field uppercase", map[string]any{"type": "FREECREDITS2API"}, "x.json", "", true},
 		{"legacy workbuddy type", map[string]any{"type": "workbuddy"}, "x.json", "", true},
 		{"legacy codebuddy type", map[string]any{"type": "codebuddy"}, "x.json", "", true},
 		{"domain workbuddy.ai", map[string]any{"domain": "www.workbuddy.ai"}, "x.json", "", true},

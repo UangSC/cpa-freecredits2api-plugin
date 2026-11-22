@@ -28,34 +28,34 @@ func TestInstancesExposeDomesticAndInternational(t *testing.T) {
 	cn := instances[0].(*adapter)
 	global := instances[1].(*adapter)
 	// 显式 vendor 字段是强证据：同族另一实例的凭证必须否决。
-	if !cn.Match("zcodecn-a.json", "freetier", map[string]any{"vendor": VendorIDCN, "jwt_token": "x"}) {
+	if !cn.Match("zcodecn-a.json", "freecredits2api", map[string]any{"vendor": VendorIDCN, "jwt_token": "x"}) {
 		t.Fatal("国内实例应认领 vendor=zcodecn")
 	}
-	if cn.Match("zcodeglobal-a.json", "freetier", map[string]any{"vendor": VendorIDGlobal, "jwt_token": "x"}) {
+	if cn.Match("zcodeglobal-a.json", "freecredits2api", map[string]any{"vendor": VendorIDGlobal, "jwt_token": "x"}) {
 		t.Fatal("国内实例不应认领国际凭证")
 	}
-	if global.Match("zcodecn-a.json", "freetier", map[string]any{"vendor": VendorIDCN, "jwt_token": "x"}) {
+	if global.Match("zcodecn-a.json", "freecredits2api", map[string]any{"vendor": VendorIDCN, "jwt_token": "x"}) {
 		t.Fatal("国际实例不应认领国内凭证")
 	}
 	// 旧凭证 vendor=zcode：按 region 归属；缺 region 默认国际版。
 	legacyCN := map[string]any{"vendor": VendorID, "region": RegionCN, "jwt_token": "x"}
-	if !cn.Match("zcode-old.json", "freetier", legacyCN) {
+	if !cn.Match("zcode-old.json", "freecredits2api", legacyCN) {
 		t.Fatal("旧国内凭证应按 region 归到国内实例")
 	}
-	if global.Match("zcode-old.json", "freetier", legacyCN) {
+	if global.Match("zcode-old.json", "freecredits2api", legacyCN) {
 		t.Fatal("旧国内凭证不应归到国际实例")
 	}
-	if !global.Match("zcode-old.json", "freetier", map[string]any{"vendor": VendorID, "jwt_token": "x"}) {
+	if !global.Match("zcode-old.json", "freecredits2api", map[string]any{"vendor": VendorID, "jwt_token": "x"}) {
 		t.Fatal("缺 region 的旧凭证应默认归国际实例")
 	}
 	// 别家凭证绝不认领（宿主会把所有非内建格式挨个喂过来）。
 	foreign := map[string]any{"vendor": "workbuddycn", "jwt_token": "x"}
-	if cn.Match("workbuddycn-a.json", "freetier", foreign) || global.Match("workbuddycn-a.json", "freetier", foreign) {
+	if cn.Match("workbuddycn-a.json", "freecredits2api", foreign) || global.Match("workbuddycn-a.json", "freecredits2api", foreign) {
 		t.Fatal("不应认领别家凭证")
 	}
 	// 无 vendor、无文件名前缀、无 ZCode 特征的文件也不认领。
 	bare := map[string]any{"api_key": "plain-key"}
-	if cn.Match("account-1.json", "freetier", bare) || global.Match("account-1.json", "freetier", bare) {
+	if cn.Match("account-1.json", "freecredits2api", bare) || global.Match("account-1.json", "freecredits2api", bare) {
 		t.Fatal("无任何 ZCode 特征时不应认领")
 	}
 }

@@ -703,8 +703,12 @@
     modelSyncRunning = true;
     var waiters = modelSyncWaiters;
     modelSyncWaiters = [];
-    var configPath = hostPath(BASE + "/config");
-    api("PATCH", configPath, { config_reloaded_at: new Date().toISOString() }).then(function (result) {
+    var body = { config_reloaded_at: new Date().toISOString() };
+    var configPath = "/config" + BASE.replace(/^\/plugins\//, "/plugins/configs/");
+    api("PATCH", hostPath(configPath, 8), body).catch(function (err) {
+      if (err.status !== 404 && err.status !== 405) throw err;
+      return api("PATCH", hostPath(BASE + "/config"), body);
+    }).then(function (result) {
       if (!result || result.status !== "ok") throw new Error("CPA 未确认重载配置");
       loadModels(false);
       return true;

@@ -221,7 +221,7 @@ func managementCallWithBody(t *testing.T, method, path string, body any) plugina
 	t.Helper()
 	request := pluginapi.ManagementRequest{
 		Method:         method,
-		Path:           "/v0/management/plugins/freetier2api" + path,
+		Path:           "/v0/management/plugins/freecredits2api" + path,
 		HostCallbackID: testCallbackID,
 	}
 	if body != nil {

@@ -10,7 +10,7 @@ import (
 // 只断言「页面确实渲染出来了、关键区块和基础路径都在、没有残留模板占位」，
 // 不锁 class 名与文案：那类快照断言重构一次就红一片，却抓不到任何真 bug。
 func TestConsolePageRendersSections(t *testing.T) {
-	const basePath = "/plugins/freetier2api"
+	const basePath = "/plugins/freecredits2api"
 	page := Page(basePath, Identity{DisplayName: "测试插件", Version: "v0.0.0-test"})
 
 	if len(page) < 10000 {

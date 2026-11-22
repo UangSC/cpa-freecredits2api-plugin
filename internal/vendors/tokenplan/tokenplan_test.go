@@ -57,16 +57,16 @@ func TestCredentialOwnershipAndHeaderValidation(t *testing.T) {
 			t.Fatalf("无效凭证被接收: %s", raw)
 		}
 	}
-	if LooksLikeCredential(map[string]any{"api_key": "generic"}, "other.json", "freetier") {
+	if LooksLikeCredential(map[string]any{"api_key": "generic"}, "other.json", "freecredits2api") {
 		t.Fatal("不应认领其他平台的通用 API Key")
 	}
-	if LooksLikeCredential(map[string]any{"vendor": "inkstone"}, "tokenplan-example.json", "freetier") {
+	if LooksLikeCredential(map[string]any{"vendor": "inkstone"}, "tokenplan-example.json", "freecredits2api") {
 		t.Fatal("不应按文件名覆盖明确平台归属")
 	}
-	if !LooksLikeCredential(map[string]any{"vendor": "tokenplan"}, "renamed.json", "freetier") {
+	if !LooksLikeCredential(map[string]any{"vendor": "tokenplan"}, "renamed.json", "freecredits2api") {
 		t.Fatal("明确平台归属应可认领")
 	}
-	if LooksLikeCredential(map[string]any{"vendor": "tokenplan", "type": "openai"}, "tokenplan-key.json", "freetier") || LooksLikeCredential(map[string]any{"vendor": "tokenplan"}, "tokenplan-key.json", "openai") {
+	if LooksLikeCredential(map[string]any{"vendor": "tokenplan", "type": "openai"}, "tokenplan-key.json", "freecredits2api") || LooksLikeCredential(map[string]any{"vendor": "tokenplan"}, "tokenplan-key.json", "openai") {
 		t.Fatal("不应认领其他认证提供方凭证")
 	}
 }

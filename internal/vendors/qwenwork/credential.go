@@ -67,7 +67,7 @@ func ParseCredential(data []byte) (*Credential, error) {
 	}
 	for _, key := range []string{"type", "provider"} {
 		if declared := stringIn(raw, key); declared != "" && declared != core.ProviderKey {
-			return nil, fmt.Errorf("千问办公插件凭证的 type/provider 必须为 freetier")
+			return nil, fmt.Errorf("千问办公插件凭证的 type/provider 必须为 %s", core.ProviderKey)
 		}
 	}
 	token := stringIn(raw, "token", "access_token", "accessToken")

@@ -196,6 +196,9 @@ func filterPluginAuths(entries []core.HostAuth, registry *core.Registry) []core.
 
 	for _, entry := range entries {
 		provider := strings.TrimSpace(entry.Provider)
+		if core.IsLegacyProvider(provider) {
+			continue
+		}
 		belongs := (provider != "" && strings.EqualFold(provider, core.ProviderKey)) || fileNameBelongsToPlugin(entry.Name, registry)
 		if !belongs {
 			continue

@@ -19,7 +19,7 @@ import (
 
 const syncTestVendorID = "credential-sync-test"
 const syncTestName = syncTestVendorID + "-account.json"
-const syncTestRaw = `{"type":"freetier","vendor":"credential-sync-test","token":"old-token","user_id":"same-user","prefix":"custom","proxy_url":"http://old-proxy.test","disabled":true,"label":"用户备注"}`
+const syncTestRaw = `{"type":"freecredits2api","vendor":"credential-sync-test","token":"old-token","user_id":"same-user","prefix":"custom","proxy_url":"http://old-proxy.test","disabled":true,"label":"用户备注"}`
 
 type syncTestNative struct{ token string }
 

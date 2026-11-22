@@ -361,7 +361,7 @@ func TestCheckinAutoRefreshesOn401(t *testing.T) {
 		switch method {
 		case "host.auth.list":
 			return json.Marshal([]map[string]any{
-				{"id": "user1", "name": "user1.json", "auth_index": "user1.json", "provider": "freetier"},
+				{"id": "user1", "name": "user1.json", "auth_index": "user1.json", "provider": "freecredits2api"},
 			})
 		case "host.auth.get":
 			return json.Marshal(map[string]any{

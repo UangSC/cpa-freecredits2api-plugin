@@ -2,7 +2,7 @@
 """把旧凭证文件迁移到 FreeCredits2API 的命名与字段约定。
 
 做三件事（每个文件）：
-  1. type 改为 freetier（所有供应商共用一个 provider key）；
+  1. type 改为 freecredits2api（所有供应商共用一个 provider key）；
   2. 新增 vendor 字段（供应商归属的最强证据，workbuddycn 等）；
   3. 文件名改为 <vendor>-<uid>.json。
 
@@ -14,6 +14,7 @@
 用法：
   python3 scripts/migrate_auths.py <auths-dir>            # 预演
   python3 scripts/migrate_auths.py <auths-dir> --apply    # 执行
+  python3 scripts/migrate_auths.py <old-dir> --output-dir <new-dir> --apply
 """
 
 import argparse
@@ -23,7 +24,7 @@ import re
 import sys
 
 # 统一的 provider key（与 core.ProviderKey 一致）。
-PROVIDER_KEY = "freetier"
+PROVIDER_KEY = "freecredits2api"
 
 # 旧文件名前缀 -> 新供应商 ID 的映射。
 # 旧文件名里没有区域信息（workbuddy-<uid>.json），因此区域必须从文件内容读。
@@ -118,6 +119,8 @@ def plan_for(path: str) -> dict | None:
     identifier = sanitize(identifier_of(payload, filename, vendor))
     new_name = f"{vendor}-{identifier}.json"
     payload["type"] = PROVIDER_KEY
+    if payload.get("provider") in ("freetier", "freetier2api"):
+        payload["provider"] = PROVIDER_KEY
     payload["vendor"] = vendor
     return {
         "path": path,
@@ -132,6 +135,7 @@ def plan_for(path: str) -> dict | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("auths_dir", help="凭证目录（CPA 的 auth-dir）")
+    parser.add_argument("--output-dir", help="新凭证目录（默认在输入目录生成副本）")
     parser.add_argument("--apply", action="store_true", help="真正执行（默认只预演）")
     args = parser.parse_args()
 
@@ -165,11 +169,13 @@ def main() -> int:
         print("\n这是预演，未改动任何文件。确认后加 --apply 执行。")
         return 0
 
+    directory = args.output_dir or args.auths_dir
+    if args.output_dir:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
     print()
     for plan in plans:
         if "error" in plan:
             continue
-        directory = os.path.dirname(plan["path"])
         target = os.path.join(directory, plan["new_name"])
 
         # 独占创建，目标与原文件同名或被其他迁移进程先写入时都会跳过。

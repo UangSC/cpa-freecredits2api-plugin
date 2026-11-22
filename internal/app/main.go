@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	// pluginID 已用于 CPA 配置、插件文件名与管理路由，升级沿用该 ID。
-	pluginID          = "freetier2api"
+	pluginID          = core.PluginID
 	pluginDisplayName = "FreeCredits2API"
 	pluginAuthor      = "jiandanc/Likhixang/UangSC"
 	pluginRepository  = "https://github.com/UangSC/cpa-freecredits2api-plugin"

@@ -30,7 +30,7 @@ type stubDeps struct {
 }
 
 func (s stubDeps) Identity() Identity {
-	return Identity{ID: "freetier2api", DisplayName: "测试插件", ProviderKey: "freetier", Version: "test"}
+	return Identity{ID: "freecredits2api", DisplayName: "测试插件", ProviderKey: "freecredits2api", Version: "test"}
 }
 func (s stubDeps) Config() PluginConfig { return DefaultPluginConfig() }
 func (s stubDeps) State() state.State   { return s.store.Snapshot() }
@@ -105,7 +105,7 @@ func TestRegistrationDeclaresRoutes(t *testing.T) {
 	registration := service.Registration()
 	found := false
 	for _, route := range registration.Routes {
-		if route.Path == "/plugins/freetier2api/status" {
+		if route.Path == "/plugins/freecredits2api/status" {
 			found = true
 		}
 	}
@@ -120,7 +120,7 @@ func TestRegistrationDeclaresRoutes(t *testing.T) {
 func TestHandleStatusAndUnknownRoute(t *testing.T) {
 	service := newService(t)
 
-	raw, err := service.Handle([]byte(`{"method":"GET","path":"/v0/management/plugins/freetier2api/status"}`))
+	raw, err := service.Handle([]byte(`{"method":"GET","path":"/v0/management/plugins/freecredits2api/status"}`))
 	if err != nil {
 		t.Fatalf("handle status: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestHandleStatusAndUnknownRoute(t *testing.T) {
 		t.Fatalf("unexpected envelope: %s", raw)
 	}
 
-	raw, err = service.Handle([]byte(`{"method":"GET","path":"/plugins/freetier2api/nope"}`))
+	raw, err = service.Handle([]byte(`{"method":"GET","path":"/plugins/freecredits2api/nope"}`))
 	if err != nil {
 		t.Fatalf("handle unknown: %v", err)
 	}
@@ -180,7 +180,7 @@ func (s stubTaskDeps) Now() time.Time                    { return time.Now() }
 // 编译期已经保证 Go 侧一致，但 HTML 是字符串，编译器看不见。这里把
 // settingsUpdateRequest 的每个 json tag 钉到页面上，防止再次漂移。
 func TestSettingsPayloadKeysMatchConsole(t *testing.T) {
-	page := Page("/plugins/freetier2api", stubDeps{}.Identity())
+	page := Page("/plugins/freecredits2api", stubDeps{}.Identity())
 
 	// 兼容旧版页面/脚本的固定字段：后端仍接受，但当前页面不再发送。
 	deprecated := map[string]bool{

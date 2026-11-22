@@ -66,7 +66,7 @@ func LoginStart(ctx context.Context, logins core.LoginSessions) (*pluginapi.Auth
 	})
 
 	return &pluginapi.AuthLoginStartResponse{
-		Provider:  "freetier",
+		Provider:  core.ProviderKey,
 		URL:       buildAuthorizeURL(ticketID, challenge),
 		State:     sessionID,
 		ExpiresAt: time.Now().Add(15 * time.Minute),
@@ -177,7 +177,7 @@ func successResponse(creds *ticketCredentials, pending *pendingLogin) *pluginapi
 		Status:  pluginapi.AuthLoginStatusSuccess,
 		Message: "华为云账号登录成功",
 		Auth: pluginapi.AuthData{
-			Provider:    "freetier",
+			Provider:    core.ProviderKey,
 			FileName:    "codearts-" + uid + ".json",
 			Label:       cred.Label,
 			StorageJSON: storageJSON,

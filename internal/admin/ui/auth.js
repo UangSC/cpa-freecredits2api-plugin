@@ -572,7 +572,7 @@
       document.getElementById("btnSubmitCallback").disabled = false;
     }
 
-    api("GET", hostPath("/freetier-auth-url?vendor=" + encodeURIComponent(vendor.id))).then(function (data) {
+    api("GET", hostPath("/freecredits2api-auth-url?vendor=" + encodeURIComponent(vendor.id))).then(function (data) {
       if (generation !== accountAddGeneration || currentLoginVendor !== vendor) return;
       if (!data || !data.url) {
         status.textContent = "获取授权链接失败：" + ((data && data.error) || "响应缺少 url");

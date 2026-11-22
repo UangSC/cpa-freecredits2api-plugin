@@ -15,7 +15,7 @@ var hostLinePattern = regexp.MustCompile(
 	`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] \[([^\]]*)\] \[([A-Z]+)\] \[freecredits2api\] (.+)$`)
 
 // setupHostLog 在临时目录里造出 <base>/auths/logs/main.log，并让状态目录落在
-// <base>/freetier2api（自动探测就是从状态目录的父目录反推的）。
+// <base>/freecredits2api（自动探测就是从状态目录的父目录反推的）。
 func setupHostLog(t *testing.T) (stateDir, logFile string) {
 	t.Helper()
 	base := t.TempDir()
@@ -26,7 +26,7 @@ func setupHostLog(t *testing.T) (stateDir, logFile string) {
 	if errWrite := os.WriteFile(logFile, nil, 0o644); errWrite != nil {
 		t.Fatalf("create host log: %v", errWrite)
 	}
-	stateDir = filepath.Join(base, "freetier2api")
+	stateDir = filepath.Join(base, "freecredits2api")
 	if errMkdir := os.MkdirAll(stateDir, 0o700); errMkdir != nil {
 		t.Fatalf("create state dir: %v", errMkdir)
 	}
@@ -88,7 +88,7 @@ func TestHostSinkAppendsHostFormattedLines(t *testing.T) {
 
 func TestHostSinkNeverCreatesMissingFile(t *testing.T) {
 	base := t.TempDir()
-	stateDir := filepath.Join(base, "freetier2api")
+	stateDir := filepath.Join(base, "freecredits2api")
 	logFile := filepath.Join(base, "logs", "main.log")
 
 	InitHostSink(HostSinkOptions{Enabled: true, StateDir: stateDir, MinLevel: LevelInfo})
@@ -109,7 +109,7 @@ func TestHostSinkExplicitPathWins(t *testing.T) {
 	InitHostSink(HostSinkOptions{
 		Enabled:  true,
 		Path:     explicit,
-		StateDir: filepath.Join(base, "freetier2api"),
+		StateDir: filepath.Join(base, "freecredits2api"),
 		MinLevel: LevelInfo,
 	})
 	Info("explicit path line")

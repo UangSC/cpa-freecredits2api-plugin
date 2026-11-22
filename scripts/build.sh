@@ -12,7 +12,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOCKER="$ROOT/scripts/godocker.sh"
 
-# 产物名必须与 pluginID 一致（freetier2api）。
+# 产物名必须与 pluginID 一致（freecredits2api）。
 # 发行构建用 -s -w 减小产物体积。需要符号表或 DWARF 调试信息时，请构建不带这两个选项的版本。
 LDFLAGS="-s -w"
 
@@ -28,6 +28,6 @@ case "${GOOS:-linux}" in
   darwin) ext="dylib" ;;
 esac
 
-"$GODOCKER" build -buildmode=c-shared -ldflags="$LDFLAGS" -o "dist/freetier2api.$ext" .
+"$GODOCKER" build -buildmode=c-shared -ldflags="$LDFLAGS" -o "dist/freecredits2api.$ext" .
 
-echo "Built dist/freetier2api.$ext"
+echo "Built dist/freecredits2api.$ext"

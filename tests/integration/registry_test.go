@@ -89,6 +89,9 @@ func TestRegistryManifestIsValid(t *testing.T) {
 		if entry.Version != "" && !pluginVersionPattern.MatchString(entry.Version) {
 			t.Fatalf("version %q does not match the host pattern", entry.Version)
 		}
+		if entry.Version != strings.TrimPrefix(app.DefaultVersion, "v") {
+			t.Fatalf("registry version %q differs from runtime version %q", entry.Version, app.DefaultVersion)
+		}
 	}
 }
 
@@ -96,7 +99,7 @@ func TestRegistryManifestIsValid(t *testing.T) {
 //
 // 宿主按 {id}{ext} 找动态库；ID 与文件名不一致会让插件静默不被加载。
 func TestPluginIDMatchesLibraryName(t *testing.T) {
-	if app.PluginID != "freetier2api" {
+	if app.PluginID != "freecredits2api" {
 		t.Fatalf("app.PluginID = %q; changing it requires renaming the build output and registry", app.PluginID)
 	}
 	if app.ProviderKey != core.ProviderKey {

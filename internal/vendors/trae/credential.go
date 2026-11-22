@@ -122,7 +122,7 @@ func (c *Credential) StorageJSON() ([]byte, error) {
 		vendor = VendorIDFor(c.Region)
 	}
 	m := map[string]any{
-		"type":          "freetier",
+		"type":          core.ProviderKey,
 		"vendor":        vendor,
 		"region":        string(c.Region),
 		"access_token":  c.AccessToken,

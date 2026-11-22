@@ -2,10 +2,11 @@
   "schema_version": 1,
   "plugins": [
     {
-      "id": "freetier2api",
+      "id": "freecredits2api",
       "name": "FreeCredits2API",
       "description": "将多个 AI 供应商接入 CLIProxyAPI，支持凭证管理、模型发现、推理、额度查询、每日签到以及可独立扩展的活动任务。",
       "author": "jiandanc/Likhixang/UangSC",
+      "version": "0.2.0",
       "repository": "https://github.com/UangSC/cpa-freecredits2api-plugin",
       "homepage": "https://github.com/UangSC/cpa-freecredits2api-plugin",
       "license": "MIT",

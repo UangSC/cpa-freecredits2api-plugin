@@ -534,6 +534,12 @@ func (s *Service) handleAccountAddRequest(req pluginapi.ManagementRequest) plugi
 		if err := json.Unmarshal([]byte(credentialJSON), &doc); err != nil || doc == nil {
 			return JSONResponse(http.StatusBadRequest, map[string]any{"ok": false, "error": "credential_json 不是合法的 JSON 对象"})
 		}
+		// 旧插件凭证只在用户显式导入时转换。宿主扫描普通目录时不会接管旧文件。
+		for _, field := range []string{"type", "provider"} {
+			if value, ok := doc[field].(string); ok && core.IsLegacyProvider(value) {
+				doc[field] = s.deps.Identity().ProviderKey
+			}
+		}
 		doc[core.VendorKey] = vendor.ID()
 		encoded, errMarshal := json.MarshalIndent(doc, "", "  ")
 		if errMarshal != nil {

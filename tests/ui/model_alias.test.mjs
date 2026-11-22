@@ -130,11 +130,11 @@ test('正在重载时新保存的设置等待下一轮重载，失败返回 fals
   const scope = vm.createContext({
     setTimeout, clearTimeout,
     BASE: '/plugins/test-plugin',
-    hostPath: path => path,
+    hostPath: (path, version) => version === 8 ? '/v8/management' + path : path,
     loadModels: () => {}, banner: () => {},
     api: async (method, path, body) => {
       assert.equal(method, 'PATCH');
-      assert.equal(path, '/plugins/test-plugin/config');
+      assert.equal(path, '/v8/management/config/plugins/configs/test-plugin');
       assert.deepEqual(Object.keys(body), ['config_reloaded_at']);
       const pending = deferred();
       patches.push(pending);

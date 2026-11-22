@@ -424,7 +424,7 @@ func SaveCredentialFile(path string, cred *Credential) error {
 // （而且这个错误是静默的）。反过来，漏认只是加载失败，用户立刻会发现。
 //
 // 因此只接受**本插件特有的证据**，从强到弱：
-//  1. 文件里的 type 字段或宿主传入的 provider 提示是 freetier；
+//  1. 文件里的 type 字段或宿主传入的 provider 提示是 core.ProviderKey；
 //  2. 文件名符合本插件的命名约定（workbuddycn / workbuddyglobal 前缀/中缀）；
 //  3. 具备本插件独有的嵌套结构（auth.accessToken + auth.refreshToken）。
 //
@@ -435,7 +435,7 @@ func SaveCredentialFile(path string, cred *Credential) error {
 // 注意：本函数只判断「属于本协议」，**不判断区域**——区域由 core.ResolveVendor
 // 的文件名前缀与 vendor 字段决定，或由具体 vendor 实例的 Match 二次确认。
 func LooksLikeCredential(raw map[string]any, fileName, provider string) bool {
-	// 1) 显式声明（最可靠，也是推荐的写法：支持当前 freetier 及历史 workbuddy / codebuddy 标识）。
+	// 1) 显式声明（支持插件认证标识及历史 workbuddy / codebuddy 渠道标识）。
 	for _, expected := range []string{ProviderKey, "workbuddy", "codebuddy"} {
 		if strings.EqualFold(strings.TrimSpace(provider), expected) {
 			return true

@@ -151,20 +151,34 @@ func TestAuthParseRecognizesOwnCredential(t *testing.T) {
 func TestAuthParseRemovalMarkerReturnsNoRuntimeAccount(t *testing.T) {
 	installFakeHost(t)
 	setupTestPlugin(t)
-	for _, marker := range []string{core.AuthRemovalMarker, "_tierbridge2api_remove", "_freetier2api_remove"} {
-		for _, provider := range []string{app.ProviderKey, "codex"} {
-			result := callMethod(t, pluginabi.MethodAuthParse, pluginapi.AuthParseRequest{
-				Provider: provider, FileName: "account.json",
-				RawJSON: []byte(`{"type":"freetier","disabled":true,"` + marker + `":true}`),
-			})
-			var response pluginapi.AuthParseResponse
-			if err := json.Unmarshal(result, &response); err != nil {
-				t.Fatal(err)
-			}
-			if response.Handled != (provider == app.ProviderKey) || response.Auth.ID != "" || response.Auth.Provider != "" {
-				t.Fatalf("provider=%q marker=%q: 删除标记返回意外凭证 %s", provider, marker, result)
-			}
+	for _, provider := range []string{app.ProviderKey, "codex"} {
+		result := callMethod(t, pluginabi.MethodAuthParse, pluginapi.AuthParseRequest{
+			Provider: provider, FileName: "account.json",
+			RawJSON: []byte(`{"type":"` + app.ProviderKey + `","disabled":true,"` + core.AuthRemovalMarker + `":true}`),
+		})
+		var response pluginapi.AuthParseResponse
+		if err := json.Unmarshal(result, &response); err != nil {
+			t.Fatal(err)
 		}
+		if response.Handled != (provider == app.ProviderKey) || response.Auth.ID != "" || response.Auth.Provider != "" {
+			t.Fatalf("provider=%q: 删除标记返回意外凭证 %s", provider, result)
+		}
+	}
+}
+
+func TestAuthParseLeavesOldPluginCredentialsUntouched(t *testing.T) {
+	installFakeHost(t)
+	setupTestPlugin(t)
+	result := callMethod(t, pluginabi.MethodAuthParse, pluginapi.AuthParseRequest{
+		FileName: "tokenplan-old.json", Provider: "freetier",
+		RawJSON: []byte(`{"type":"freetier","vendor":"tokenplan","api_key":"example-key"}`),
+	})
+	var response pluginapi.AuthParseResponse
+	if err := json.Unmarshal(result, &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Handled {
+		t.Fatalf("新插件接管了旧插件凭证：%s", result)
 	}
 }
 
@@ -206,7 +220,7 @@ func TestManagementStatusUsesHostCallbackScope(t *testing.T) {
 	setupTestPlugin(t)
 	raw, err := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
 		Method:         http.MethodGet,
-		Path:           "/v0/management/plugins/freetier2api/status",
+		Path:           "/v0/management/plugins/freecredits2api/status",
 		Headers:        http.Header{"X-Host-Callback-Id": {"client-supplied"}},
 		HostCallbackID: "cpa-issued",
 	}))
@@ -237,7 +251,7 @@ func TestBackgroundAutoAllIgnoresRequestCallbackScope(t *testing.T) {
 	const requestCallbackID = "req-scope-1"
 	raw, err := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
 		Method:         "POST",
-		Path:           "/v0/management/plugins/freetier2api/tasks/auto_all",
+		Path:           "/v0/management/plugins/freecredits2api/tasks/auto_all",
 		HostCallbackID: requestCallbackID,
 	}))
 	if err != nil {
@@ -275,7 +289,7 @@ func autoAllRunning(t *testing.T) bool {
 	t.Helper()
 	raw, err := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
 		Method: "GET",
-		Path:   "/v0/management/plugins/freetier2api/tasks/auto_all/status",
+		Path:   "/v0/management/plugins/freecredits2api/tasks/auto_all/status",
 	}))
 	if err != nil {
 		t.Fatalf("status handleMethod error: %v", err)
@@ -298,7 +312,7 @@ func TestManagementAutoAllRouteDispatched(t *testing.T) {
 
 	raw, err := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
 		Method: "POST",
-		Path:   "/v0/management/plugins/freetier2api/tasks/auto_all",
+		Path:   "/v0/management/plugins/freecredits2api/tasks/auto_all",
 	}))
 	if err != nil {
 		t.Fatalf("handleMethod error: %v", err)

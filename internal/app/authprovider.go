@@ -70,8 +70,7 @@ func (a *App) handleAuthParse(request []byte) ([]byte, error) {
 		// 非 JSON 的凭证文件不归本插件处理。
 		return core.OKEnvelope(pluginapi.AuthParseResponse{Handled: false})
 	}
-	if raw["type"] == providerKey &&
-		(raw[core.AuthRemovalMarker] == true || raw["_tierbridge2api_remove"] == true || raw["_freetier2api_remove"] == true) {
+	if raw["type"] == providerKey && raw[core.AuthRemovalMarker] == true {
 		// CPA 将 handled 且无认证条目解释为撤销该文件原有的全部运行时账号和模型。
 		provider := strings.TrimSpace(rpc.Provider)
 		return core.OKEnvelope(pluginapi.AuthParseResponse{Handled: provider == "" || strings.EqualFold(provider, providerKey)})

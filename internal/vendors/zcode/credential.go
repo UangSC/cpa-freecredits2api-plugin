@@ -191,7 +191,7 @@ func parseProfile(m map[string]any) DeviceProfile {
 // StorageJSON 导出规范落盘 JSON。
 func (c *Credential) StorageJSON() ([]byte, error) {
 	m := map[string]any{
-		"type":      "freetier",
+		"type":      core.ProviderKey,
 		"vendor":    core.FirstNonEmpty(c.Vendor, VendorID),
 		"auth_mode": core.FirstNonEmpty(c.AuthMode, "apikey"),
 	}
@@ -231,7 +231,7 @@ func MergeStorageJSON(original []byte, updated *Credential) ([]byte, error) {
 	// type / vendor 无条件写：归属判定依赖这两个键，即使用户从别处拷来的
 	// 旧凭证缺了它们，合并结果也必须补上。
 	setFields := func(m map[string]any) {
-		m["type"] = "freetier"
+		m["type"] = core.ProviderKey
 		m["vendor"] = core.FirstNonEmpty(updated.Vendor, VendorID)
 		if updated.APIKey != "" {
 			m["api_key"] = updated.APIKey

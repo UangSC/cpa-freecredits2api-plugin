@@ -107,7 +107,7 @@ explicit := []core.TaskModule{
 }
 ```
 
-以下路径相对于 `/v0/management/plugins/freetier2api`。
+以下路径相对于 `/v0/management/plugins/freecredits2api`。
 
 1. `GET /tasks/modules` 和 `GET /vendors` 返回已启用渠道的任务模块。`GET /status` 按账号的 `Applicable` 结果补充模块 ID。
 2. 任务中心用模块元数据呈现渠道、执行入口以及需要消耗对话额度的提示。

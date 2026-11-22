@@ -7,6 +7,8 @@
 
 同步时对照目标宿主版本的 SDK 和 RPC 请求结构，保留本仓库仍需使用的传输字段，并用真实宿主回归验证。CI 格式检查排除这份副本。宿主 ABI 源码见 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)。
 
+本插件使用原生 ABI `1`、RPC schema `6` 和单一认证标识 `freecredits2api`。CPA v8.1.1 仍使用 ABI `1`，RPC schema 新增的多认证入口等能力可选。本插件只声明实际实现的能力。控制台资源和插件管理子路由沿用宿主的 `/v0` 挂载，宿主配置写入优先走 `/v8/management/config`。 [CPA v8.1.1 ABI](https://github.com/router-for-me/CLIProxyAPI/blob/v8.1.1/sdk/pluginabi/types.go) · [CPA v8.1.1 管理路由](https://github.com/router-for-me/CLIProxyAPI/blob/v8.1.1/internal/api/server_management_v8.go)
+
 ## 宿主请求缓冲区契约（`cliproxy_plugin_api.call` 的 `request`）
 
 - 宿主侧约定：`request` / `request_len` 指向的内存在**本次同步调用期间**有效，且不会被并发改写；
