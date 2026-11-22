@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -349,28 +350,27 @@ func TestSubmitLoginCallbackRejectsSessionlessVendor(t *testing.T) {
 	}
 }
 
-// TestVendorAccountLimitEnforced 验证单个供应商最多允许添加 10 个账号（core.MaxAccountsPerVendor）。
-func TestVendorAccountLimitEnforced(t *testing.T) {
+func TestVendorAccountsBeyondTenCanBeListedAndLoginCanStart(t *testing.T) {
 	host := installFakeHost(t)
 	setupTestPlugin(t)
 
-	for i := 1; i <= core.MaxAccountsPerVendor; i++ {
-		id := string(rune(96 + i))
-		host.AddAccount(id, "codearts-user-"+id+".json", `{"vendor":"codearts","access_key_id":"ak","secret_access_key":"sk"}`)
+	const count = 11
+	for i := 1; i <= count; i++ {
+		id := strconv.Itoa(i)
+		host.AddAccount(id, "qodercn-user-"+id+".json",
+			`{"vendor":"qodercn","region":"cn","device_token":"dt-test","refresh_token":"drt-test"}`)
 	}
 
-	// 同供应商已满 10 个账号时，发起第 11 个登录必须被拒绝。
-	_, errStart := testApp.HandleMethod(pluginabi.MethodAuthLoginStart, mustMarshal(map[string]any{
-		"metadata": map[string]any{core.VendorKey: "codearts"},
-	}))
-	if errStart == nil || !strings.Contains(errStart.Error(), "最多添加 10 个账号") {
-		t.Fatalf("expected account limit error for codearts, got %v", errStart)
+	status := managementCall(t, "GET", "/status")
+	var payload struct {
+		AccountCount int `json:"account_count"`
+	}
+	if err := json.Unmarshal(status.Body, &payload); err != nil {
+		t.Fatalf("decode account status: %v", err)
+	}
+	if payload.AccountCount != count {
+		t.Fatalf("account count = %d, want %d", payload.AccountCount, count)
 	}
 
-	// 其它未满 10 个账号的供应商不受影响。
-	if _, errOther := testApp.HandleMethod(pluginabi.MethodAuthLoginStart, mustMarshal(map[string]any{
-		"metadata": map[string]any{core.VendorKey: "qodercn"},
-	})); errOther != nil {
-		t.Fatalf("other vendor should still be allowed, got %v", errOther)
-	}
+	startVendorLogin(t, "qodercn")
 }

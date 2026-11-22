@@ -154,7 +154,7 @@ func (g *chatGate) acquire(ctx context.Context, accountKey string) (func(), erro
 	}
 }
 
-// slot 返回账号对应的闸门。账号数受 core.MaxAccountsPerVendor 约束，无需回收。
+// slot 返回账号对应的闸门，在同一个 chatGate 内为每个账号复用。
 func (g *chatGate) slot(accountKey string) chan struct{} {
 	g.mu.Lock()
 	defer g.mu.Unlock()

@@ -477,9 +477,6 @@ func (a *App) startVendorLogin(ctx context.Context, vendor core.Vendor, metadata
 	if !okLogin {
 		return nil, core.LoginUnsupported(vendor)
 	}
-	if errLimit := a.pool.CheckVendorLimit(ctx, hostbridge.CallbackID(ctx), vendor, ""); errLimit != nil {
-		return nil, errLimit
-	}
 	response, errStart := login.LoginStart(ctx, metadata)
 	if errStart != nil {
 		return nil, core.ToPluginError(errStart)
@@ -521,14 +518,6 @@ func (a *App) handleAuthLoginPoll(request []byte) ([]byte, error) {
 	response, errPoll := login.LoginPoll(ctx, sessionID)
 	if errPoll != nil {
 		return nil, core.ToPluginError(errPoll)
-	}
-	if response != nil && response.Status == pluginapi.AuthLoginStatusSuccess {
-		if errLimit := a.pool.CheckVendorLimit(ctx, rpc.HostCallbackID, vendor, response.Auth.FileName); errLimit != nil {
-			return core.OKEnvelope(&pluginapi.AuthLoginPollResponse{
-				Status:  pluginapi.AuthLoginStatusError,
-				Message: errLimit.Error(),
-			})
-		}
 	}
 	return core.OKEnvelope(response)
 }
@@ -598,10 +587,6 @@ func (a *App) SendLoginSMS(ctx context.Context, vendorID, phone string) (string,
 	if !okSMS {
 		return "", core.NewPluginError("sms_unsupported", vendor.Name()+" 不支持手机验证码登录", http.StatusBadRequest)
 	}
-	callbackID := hostbridge.CallbackID(ctx)
-	if errLimit := a.pool.CheckVendorLimit(ctx, callbackID, vendor, ""); errLimit != nil {
-		return "", errLimit
-	}
 	sessionKey, errSend := sender.SendLoginCode(ctx, phone)
 	if errSend != nil {
 		return "", core.ToPluginError(errSend)
@@ -660,21 +645,12 @@ func (a *App) SubmitLoginCallback(ctx context.Context, state, rawURL string) (*c
 		return nil, core.NewPluginError("invalid_request", "请粘贴浏览器地址栏里的完整回调链接", http.StatusBadRequest)
 	}
 
-	callbackID := hostbridge.CallbackID(ctx)
-	if errLimit := a.pool.CheckVendorLimit(ctx, callbackID, vendor, ""); errLimit != nil {
-		return nil, errLimit
-	}
 	result, errSubmit := submitter.SubmitCallback(ctx, sessionID, trimmed)
 	if errSubmit != nil {
 		return nil, core.ToPluginError(errSubmit)
 	}
 	if result == nil {
 		return nil, core.NewPluginError("login_failed", "回调处理失败，请重新发起登录", http.StatusInternalServerError)
-	}
-	if result.Status == pluginapi.AuthLoginStatusSuccess {
-		if errLimit := a.pool.CheckVendorLimit(ctx, callbackID, vendor, result.Auth.FileName); errLimit != nil {
-			return nil, errLimit
-		}
 	}
 	return result, nil
 }
