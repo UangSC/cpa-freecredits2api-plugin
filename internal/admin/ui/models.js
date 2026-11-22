@@ -42,13 +42,13 @@
     } }
   ];
 
-  var MODEL_COLUMNS_STORE_KEY = "tierbridge-model-optional-columns";
+  var MODEL_COLUMNS_STORE_KEY = "freecredits2api-model-optional-columns";
   var columnPrefs = readColumnPrefs();
   var creditsSortOrder = null;
 
   function readColumnPrefs() {
     try {
-      var raw = migrateStoredValue(localStorage, MODEL_COLUMNS_STORE_KEY, "freetier-model-optional-columns");
+      var raw = migrateStoredValue(localStorage, MODEL_COLUMNS_STORE_KEY, "tierbridge-model-optional-columns", "freetier-model-optional-columns");
       if (!raw) return {};
       var parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {

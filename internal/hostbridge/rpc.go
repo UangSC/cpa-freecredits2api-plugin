@@ -1,8 +1,7 @@
 // Package hostbridge 是插件与 CPA 宿主通信的唯一通道。
 //
-// 它把「宿主回调」与「出站 HTTP」收在一起，因为两者本质是同一件事：
-// 插件的一切对外请求都得经过宿主，否则会绕过全局代理、账号级代理、
-// 出站日志与 API 统计（表现为「代理配了没用」「请求日志里看不到」）。
+// 本包封装宿主回调和 HTTP 客户端。适配器使用宿主桥接出站时，代理、
+// 请求记录和取消由宿主处理，具体能力取决于宿主版本与回调作用域。
 //
 // 四件事：
 //
@@ -16,23 +15,9 @@
 //  4. 出站 HTTP（http.go / sse.go）：Client 一次性取完整响应；StreamClient
 //     按需从 host.http.stream_read 拉取（SSE 对话）；ForwardRawSSE 转发原始流。
 //
-// 对 internal 包的依赖方向：本包不知道宿存在，宿主调用能力由 package main 在
-// init 里通过 Configure 注入（避免 internal 反向 import main）。
+// package main 在 init 时通过 Configure 注入宿主回调。
 
 package hostbridge
-
-// Package hostabi 是插件侧调用宿主回调（host.*）的唯一通道。
-//
-// 它负责三件事：
-//  1. 并发准入：同步宿主回调必须等待宿主返回；HTTP operation 取消请求
-//     能够释放宿主请求，普通调用与控制调用分别限流；
-//  2. 关闭排空：Shutdown 时先禁止新调用，再等待在飞调用返回，最后才允许
-//     宿主 dlclose 本动态库（在活跃 Go/CGO 栈上卸载会直接崩溃）；
-//  3. 回调作用域：host_callback_id 绑定到 context，宿主据此把上游请求/响应
-//     关联回原始请求，并在请求结束时回收流资源。
-//
-// CGO 实现由 package main 注入（//export 只能出现在 main 包里）；
-// 测试用内存假宿主替换同一注入点。
 
 import (
 	"context"

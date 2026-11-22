@@ -141,11 +141,7 @@ func parseClockHour(value string) (int, bool) {
 	return hour, true
 }
 
-// pokeScheduler 唤醒调度循环重新计算下次执行时刻。
-
-// runScheduledTask 在后台执行一个任务族（供管理接口手动触发）。
-
-// runScheduledTaskContext 执行一个任务族。
+// runScheduledTaskContext 执行一个定时或手动触发的任务族。
 func (s *Service) runScheduledTaskContext(ctx context.Context, kind string) {
 	if kind == core.TaskKindCheckin {
 		s.runCheckinAll(ctx)

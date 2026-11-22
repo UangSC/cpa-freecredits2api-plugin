@@ -1,6 +1,6 @@
 package app
 
-// 本文件是唯一的供应商组合根：新增/删除供应商只改这里的工厂列表。
+// 本文件集中登记供应商工厂。任务模块由 taskmods.go 单独装配。
 
 import (
 	"cpa-freecredits2api-plugin/internal/core"

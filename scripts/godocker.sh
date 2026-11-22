@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 在容器里跑本项目的 Go 命令（本机没有 Go 工具链，只有 docker 镜像里有）。
+# 在 Docker 容器中运行本项目的 Go 命令。
 #
 # 用 golang:1.24（Debian 版，自带 gcc，cgo 构建 c-shared 需要 C 编译器）。
 #
@@ -16,9 +16,8 @@ set -euo pipefail
 IMAGE="golang:1.24"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# GOCACHE/GOMODCACHE 落在宿主挂载卷外的匿名卷里，避免与宿主的 GOPATH 冲突，
-# 同时让容器内的编译缓存跨次运行复用（否则每次都要重新编译全部依赖）。
-# GOOS/GOARCH 仅在显式设置时透传（交叉编译）；未设置时沿用容器内默认值。
+# GOCACHE 使用 Docker 命名卷跨次复用，源码通过宿主目录挂载。
+# GOOS/GOARCH 仅在显式设置时透传。CGO 交叉编译还需要匹配目标的 C 工具链。
 CROSS=""
 [ -n "${GOOS:-}" ] && CROSS="$CROSS -e GOOS=$GOOS"
 [ -n "${GOARCH:-}" ] && CROSS="$CROSS -e GOARCH=$GOARCH"

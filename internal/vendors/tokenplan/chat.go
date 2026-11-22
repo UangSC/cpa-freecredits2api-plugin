@@ -3,13 +3,13 @@ package tokenplan
 import (
 	"bytes"
 	"context"
+	"cpa-freecredits2api-plugin/internal/core"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
-	"cpa-freecredits2api-plugin/internal/core"
 	"time"
 )
 
@@ -225,7 +225,7 @@ func compactSchema(schema map[string]any) map[string]any {
 		}
 	}
 	for index, key := range keys {
-		name := fmt.Sprintf("tierbridge_schema_%d", index)
+		name := fmt.Sprintf("freecredits2api_schema_%d", index)
 		if defs, ok := existing.(map[string]any); ok {
 			if _, collision := defs[name]; collision {
 				return schema

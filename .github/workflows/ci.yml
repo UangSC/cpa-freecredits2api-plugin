@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          # 本项目没有第三方依赖（无 go.sum），关掉模块缓存以免 setup-go 报警告。
+          # 本项目无 go.sum，关闭 setup-go 的模块缓存。
           cache: false
 
       - name: gofmt
@@ -46,7 +46,7 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      - name: 控制台模型编辑测试
+      - name: 控制台测试
         run: node --test tests/ui/*.test.mjs
 
       - name: go test
@@ -184,9 +184,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # actions/checkout 按 commit 检出 tag（fetch-tags 默认 false），本地的
-          # refs/tags/<tag> 是**轻量标签**：%(contents) 只会拿到 commit 标题，
-          # 「本版要点」因此一直是空的（v0.1.18 起就这样）。显式取回注解对象。
+          # 显式取回 tag 对象。注解标签读取注解，轻量标签读取指向的提交说明。
           git fetch --force --no-tags origin "+refs/tags/${TAG}:refs/tags/${TAG}"
           if [ "$(git cat-file -t "refs/tags/${TAG}")" != "tag" ]; then
             echo "::warning::${TAG} 不是注解标签，本版要点只会有 commit 标题"
@@ -200,7 +198,7 @@ jobs:
             echo '## 手动安装'
             echo
             echo '下载对应平台的 `freetier2api_<版本>_<goos>_<goarch>.zip`，解压后把其中的'
-            echo '`freetier2api` 动态库放进 CPA 的 `plugins/` 目录。'
+            echo '`freetier2api` 动态库放进 CPA 的 `plugins.dir/<goos>/<goarch>/`。'
             echo '归档里已经用的是宿主要求的 `freetier2api{ext}` 文件名，解压后无需改名。'
             echo
             echo '| 平台 | 下载归档 |'

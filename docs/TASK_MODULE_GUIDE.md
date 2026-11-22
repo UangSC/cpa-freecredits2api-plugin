@@ -1,11 +1,8 @@
 # 可插拔任务 / 活动模块开发指南（TaskModule Protocol）
 
-本项目将各渠道的**活动任务、限时福利、成长闭环**抽离为标准化的插件口协议（`core.TaskModule`），与主账号管理、模型对话、额度查询、每日签到和控制台 UI 彻底解耦。
+FreeCredits2API 通过 `core.TaskModule` 接入活动、限时福利和成长任务。任务中心按已注册模块和账号能力展示入口。每日签到由各渠道单独声明，仍在账号页和签到排程中管理。
 
-> **核心收益**
-> - **无任务渠道零侵入**：未挂载任务模块的渠道（如 Cline、OpenCode ZEN、千问办公、书生 Token Plan 等）不会在前端出现任何任务入口，也不会被「一键做任务」误触发。
-> - **新增活动仅改 2 处**：开发者或 AI 只需在 `internal/taskmods/` 新建 1 个独立文件 + 在 `internal/app/taskmods.go` 注册 1 行，**无需改动**任务引擎（`internal/tasks/`）、管理路由（`internal/admin/`）、前端控制台（`internal/admin/ui/`）或供应商核心推理代码。
-> - **静态守卫兜底**：`tests/architecture_test.go` 强制禁止 `internal/tasks` 和 `internal/admin` 依赖 `internal/taskmods`，防止后续演进重新耦合。
+新增活动通常只需在 `internal/taskmods/` 实现模块，并在 `internal/app/taskmods.go` 登记。架构测试约束任务引擎和管理接口只依赖任务协议。
 
 ---
 
@@ -30,6 +27,7 @@
 - `SupportsScan`：若实现了 `ScannableTaskModule`，注册表会自动置为 `true`。
 - `AutoEligible`：是否纳入任务中心「一键做任务」批处理；若为 `false`，仍可在任务中心通过单模块「执行此模块」按钮手动触发。
 - `Priority`：同渠道内多个模块的执行先后（数值越小越先执行）。
+- `Manual` / `Route`：声明专属手动路由。设为 `Manual: true` 且填写 `Route` 时，宿主会登记对应 `POST` 入口，后台仅执行该模块。
 
 ---
 
@@ -44,12 +42,13 @@ package taskmods
 
 import (
 	"context"
+	"errors"
 
 	"cpa-freecredits2api-plugin/internal/core"
-	"cpa-freecredits2api-plugin/internal/vendors/example"
+	"cpa-freecredits2api-plugin/internal/vendors/workbuddy"
 )
 
-const ModuleIDExampleSpring = "example.spring_campaign"
+const ModuleIDExampleSpring = "workbuddy.spring_example"
 
 type exampleSpringModule struct{}
 
@@ -58,20 +57,19 @@ func NewExampleSpring() core.TaskModule { return exampleSpringModule{} }
 func (exampleSpringModule) Meta() core.TaskModuleMeta {
 	return core.TaskModuleMeta{
 		ID:           ModuleIDExampleSpring,
-		VendorIDs:    []string{example.VendorIDCN},
+		VendorIDs:    []string{workbuddy.VendorIDCN},
 		Kind:         "spring_campaign",
 		Category:     core.TaskCategoryCampaign,
 		Name:         "春季限时积分活动",
-		Description:  "扫描并一键领取春季限时活动奖励（不消耗对话额度）",
+		Description:  "春季活动接入示例",
 		UsesChat:     false,
-		SupportsScan: true,
-		AutoEligible: true,
+		AutoEligible: false,
 		Priority:     30,
 	}
 }
 
 func (exampleSpringModule) Applicable(target core.TaskModuleTarget) (bool, string) {
-	if target.Vendor == nil || target.Vendor.ID() != example.VendorIDCN {
+	if target.Vendor == nil || target.Vendor.ID() != workbuddy.VendorIDCN {
 		return false, "仅适用于国内版渠道"
 	}
 	if target.Cred == nil {
@@ -82,29 +80,13 @@ func (exampleSpringModule) Applicable(target core.TaskModuleTarget) (bool, strin
 
 // 可选：实现 ScannableTaskModule 后自动接入「扫描待办」与「待办队列」
 func (exampleSpringModule) Inspect(ctx context.Context, target core.TaskModuleTarget) (core.TaskInspection, error) {
-	// 调用上游只读查询接口，返回待办条目（引擎会自动补齐 ModuleID 与 KindLabel）
-	return core.TaskInspection{
-		InPeriod: true,
-		Items: []core.TaskItem{{
-			Kind:      "spring_campaign",
-			KindLabel: "春季活动",
-			Code:      "spring_gift",
-			Title:     "领取春季活动礼包",
-			Current:   0,
-			Target:    1,
-			UsesChat:  false,
-		}},
-	}, nil
+	// 替换为上游只读查询，按账号资格填写 InPeriod 和 Items。
+	return core.TaskInspection{}, nil
 }
 
 func (exampleSpringModule) Run(ctx context.Context, target core.TaskModuleTarget, code string) ([]core.AutoTaskResult, error) {
-	// code == "" 时执行模块全量动作；code 非空时只执行对应子任务
-	return []core.AutoTaskResult{{
-		Code:    core.FirstNonEmpty(code, "spring_gift"),
-		Status:  core.AutoStatusDone,
-		Message: "领取成功",
-		Credit:  100,
-	}}, nil
+	// 补齐实际执行。code 为空时处理整个模块，非空时只执行匹配的待办。
+	return nil, errors.New("示例模块尚未接入上游")
 }
 
 var (
@@ -115,7 +97,7 @@ var (
 
 ### 第 2 步：在组合根注册 1 行（`internal/app/taskmods.go`）
 
-在 `BuiltinTaskModules` 的 `explicit` 切片中追加你的模块构造函数：
+完成上游查询和执行后，在 `BuiltinTaskModules` 的 `explicit` 切片中登记构造函数。需要参与「一键做任务」时将 `AutoEligible` 设为 `true`。
 
 ```go
 explicit := []core.TaskModule{
@@ -125,12 +107,12 @@ explicit := []core.TaskModule{
 }
 ```
 
-注册完成后，以下链路全部自动生效，无需修改任何其他文件：
-1. `GET /tasks/modules` 自动返回新模块元数据；
-2. `GET /vendors` 与 `GET /status` 自动补充该渠道与账号的 `supports_tasks` / `task_modules` 能力标记；
-3. 前端「任务中心」自动在左侧任务渠道栏与「已挂载任务模块」卡片区渲染该模块及其一键执行入口；
-4. 若实现 `ScannableTaskModule`，自动参与「扫描待办」和「执行待办队列」；
-5. 若声明 `DefaultHours` / `AfterCheckin` 并实现 `ScheduledTaskModule`，自动接入定时调度器与「运行期设置」排程表单。
+以下路径相对于 `/v0/management/plugins/freetier2api`。
+
+1. `GET /tasks/modules` 和 `GET /vendors` 返回已启用渠道的任务模块。`GET /status` 按账号的 `Applicable` 结果补充模块 ID。
+2. 任务中心用模块元数据呈现渠道、执行入口以及需要消耗对话额度的提示。
+3. 实现 `ScannableTaskModule` 后可参与扫描和队列。请求可用 `vendor_ids`、`module_ids` 缩小范围，队列还接受 `kinds`。`growth` 和 `school` 仅供旧调用方兼容。
+4. 实现 `ScheduledTaskModule` 且声明有效的 `Kind` 后可纳入任务排程。`DefaultHours` 指定默认整点，`AfterCheckin` 控制自动签到后的联动。
 
 ---
 

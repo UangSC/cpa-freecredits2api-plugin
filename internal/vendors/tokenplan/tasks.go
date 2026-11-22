@@ -2,6 +2,8 @@ package tokenplan
 
 import (
 	"context"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -15,8 +17,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
-	"cpa-freecredits2api-plugin/internal/core"
 	"time"
 )
 
@@ -130,7 +130,7 @@ type quotaAuthPending struct {
 	ExpiresAt time.Time
 }
 
-const balanceCallbackPrefix = "tierbridge2api-balance/"
+const balanceCallbackPrefix = "freecredits2api-balance/"
 
 func (v *adapter) QuotaCredentialHint() string {
 	return "先打开授权地址完成网页登录，再复制登录后的完整回调链接粘贴；只绑定当前账号。也可粘贴 credits/balance 的 cURL 作为兜底。不绑定则不能查询墨点。"
@@ -163,11 +163,14 @@ func (v *adapter) callbackBalanceAuth(ctx context.Context, native *Credential, i
 	if len(parts) != 2 {
 		return nil, "", errors.New("回调缺少绑定状态或授权码")
 	}
-	state, matches := strings.CutPrefix(parts[0], balanceCallbackPrefix)
-	if !matches {
-		state, matches = strings.CutPrefix(parts[0], "freetier2api-balance/")
+	var state string
+	for _, prefix := range []string{balanceCallbackPrefix, "tierbridge2api-balance/", "freetier2api-balance/"} {
+		if value, matches := strings.CutPrefix(parts[0], prefix); matches {
+			state = value
+			break
+		}
 	}
-	if !matches || state == "" {
+	if state == "" {
 		return nil, "", errors.New("回调缺少绑定状态或授权码")
 	}
 	value, ok := v.quotaAuthSessions.Load(state)

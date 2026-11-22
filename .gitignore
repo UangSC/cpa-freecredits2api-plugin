@@ -9,11 +9,8 @@ dist/
 # 忽略更名前本地构建留下的同类产物。
 /cpa-tierbridge2api-plugin
 /freetier2api-plugin
-# c-shared 构建会在 dist/ 旁边生成同名头文件；但 bridge.h 是**手写的源码**，
-# 是构建必需文件（见下面的反向规则）。
-*.h
-# bridge.h 是 C ABI 桥的头文件，必须入库——否则别人克隆后编译不过。
-!bridge.h
+# c-shared 构建会在动态库旁生成同名头文件。C ABI 声明位于 cgo.go。
+freetier2api*.h
 
 # 宿主侧的凭证与运行状态（**绝不能进版本库**）
 auths/

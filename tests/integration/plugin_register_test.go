@@ -9,6 +9,7 @@ import (
 	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
 	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 	"cpa-freecredits2api-plugin/internal/app"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // TestRegisterReturnsFullContract 验证注册响应满足宿主契约。
@@ -150,17 +151,19 @@ func TestAuthParseRecognizesOwnCredential(t *testing.T) {
 func TestAuthParseRemovalMarkerReturnsNoRuntimeAccount(t *testing.T) {
 	installFakeHost(t)
 	setupTestPlugin(t)
-	for _, provider := range []string{app.ProviderKey, "codex"} {
-		result := callMethod(t, pluginabi.MethodAuthParse, pluginapi.AuthParseRequest{
-			Provider: provider, FileName: "account.json",
-			RawJSON: []byte(`{"type":"freetier","disabled":true,"_freetier2api_remove":true}`),
-		})
-		var response pluginapi.AuthParseResponse
-		if err := json.Unmarshal(result, &response); err != nil {
-			t.Fatal(err)
-		}
-		if response.Handled != (provider == app.ProviderKey) || response.Auth.ID != "" || response.Auth.Provider != "" {
-			t.Fatalf("provider=%q: 删除标记返回意外凭证 %s", provider, result)
+	for _, marker := range []string{core.AuthRemovalMarker, "_tierbridge2api_remove", "_freetier2api_remove"} {
+		for _, provider := range []string{app.ProviderKey, "codex"} {
+			result := callMethod(t, pluginabi.MethodAuthParse, pluginapi.AuthParseRequest{
+				Provider: provider, FileName: "account.json",
+				RawJSON: []byte(`{"type":"freetier","disabled":true,"` + marker + `":true}`),
+			})
+			var response pluginapi.AuthParseResponse
+			if err := json.Unmarshal(result, &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.Handled != (provider == app.ProviderKey) || response.Auth.ID != "" || response.Auth.Provider != "" {
+				t.Fatalf("provider=%q marker=%q: 删除标记返回意外凭证 %s", provider, marker, result)
+			}
 		}
 	}
 }

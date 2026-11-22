@@ -1,12 +1,11 @@
 # cpasdk
 
-本目录是 CLIProxyAPI 宿主 ABI/JSON 契约的 **vendored 副本**，不是第三方依赖：
+本目录保留 CLIProxyAPI 宿主 ABI 和 JSON 契约的本地副本。C 结构体声明位于仓库根目录的 `cgo.go`。
 
 - `pluginabi/types.go` 对齐宿主 `sdk/pluginabi/types.go`；
-- `pluginapi/types.go` 对齐宿主 `sdk/pluginapi/types.go`。
+- `pluginapi/types.go` 保留插件所用的 API 类型。`ManagementRequest` 额外声明宿主 RPC 在 JSON 顶层传递的 `host_callback_id`，管理路由用它绑定宿主回调作用域。
 
-同步方式：从宿主对应版本复制这两个文件，保持排版一致；`gofmt` 检查刻意排除本目录。
-宿主升级 ABI 时先更新这里，再调整 `internal/app` 的 RPC 适配层。
+同步时对照目标宿主版本的 SDK 和 RPC 请求结构，保留本仓库仍需使用的传输字段，并用真实宿主回归验证。CI 格式检查排除这份副本。宿主 ABI 源码见 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)。
 
 ## 宿主请求缓冲区契约（`cliproxy_plugin_api.call` 的 `request`）
 

@@ -1377,8 +1377,7 @@ type ManagementHandler interface {
 	HandleManagement(context.Context, ManagementRequest) (ManagementResponse, error)
 }
 
-// ManagementRequest describes an authenticated Management API request.
-// ManagementRequest describes a plugin Management API request.
+// ManagementRequest describes a request dispatched to a plugin management or resource route.
 type ManagementRequest struct {
 	// Method is the HTTP method.
 	Method string

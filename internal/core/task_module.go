@@ -294,7 +294,7 @@ func (r *TaskRegistry) AccountModuleIDs(vendor Vendor, cred *Credential) []strin
 	return out
 }
 
-// TaskSpecs 把注册表中声明了排程或手动触发路由的模块投影为通用 TaskSpec。
+// TaskSpecs 把实现定时执行接口的模块投影为通用 TaskSpec。
 func (r *TaskRegistry) TaskSpecs() []TaskSpec {
 	return r.TaskSpecsFor(nil)
 }

@@ -218,7 +218,7 @@ test('空供应商侧栏与工作区等高对齐，管理密钥升级为独立�
   assert.equal(scope.managementKey(), 'panel-key-999', '未退出时可自动复用 CPA 面板密钥');
   scope.saveRememberedKey('secret-key-abc', true);
   assert.equal(scope.rememberedLocalKey(), 'secret-key-abc', '勾选记住密钥后应可正确混淆读取');
-  assert.equal(local.getItem('cpa-tierbridge-management-key').startsWith('enc::v2::'), true, '记住密钥不应以明文落盘');
+  assert.match(local.getItem('cpa-freecredits2api-management-key'), /^enc::v2::/, '记住密钥不应以明文落盘');
   assert.equal(scope.managementKey(), 'secret-key-abc');
 
   scope.saveRememberedKey('session-only-xyz', false);
@@ -230,15 +230,17 @@ test('空供应商侧栏与工作区等高对齐，管理密钥升级为独立�
   assert.equal(scope.managementKey(), '', '退出后即使 CPA 面板存在密钥也不应静默自动重登');
   assert.equal(scope.panelAuthKey(), 'panel-key-999', '退出不应破坏 CPA 主面板自身的 localStorage 密钥');
 
-  session.removeItem('cpa-tierbridge-logged-out');
-  session.setItem('cpa-freetier-logged-out', '1');
-  local.setItem('cpa-freetier-management-key', 'legacy-key');
-  assert.equal(scope.isExplicitlyLoggedOut(), true, '升级后应保留退出状态');
-  assert.equal(scope.managementKey(), '', '升级后不应绕过显式退出');
-  assert.equal(scope.rememberedLocalKey(), 'legacy-key');
-  assert.match(local.getItem('cpa-tierbridge-management-key'), /^enc::v2::/);
-  assert.equal(local.getItem('cpa-freetier-management-key'), null);
-  assert.equal(session.getItem('cpa-freetier-logged-out'), null);
-  scope.clearSavedKeys(true);
-  assert.equal(scope.rememberedLocalKey(), '', '退出后应清除已迁移的密钥');
+  for (const prefix of ['cpa-tierbridge', 'cpa-freetier']) {
+    session.removeItem('cpa-freecredits2api-logged-out');
+    session.setItem(`${prefix}-logged-out`, '1');
+    local.setItem(`${prefix}-management-key`, 'legacy-key');
+    assert.equal(scope.isExplicitlyLoggedOut(), true, '升级后应保留退出状态');
+    assert.equal(scope.managementKey(), '', '升级后不应绕过显式退出');
+    assert.equal(scope.rememberedLocalKey(), 'legacy-key');
+    assert.match(local.getItem('cpa-freecredits2api-management-key'), /^enc::v2::/);
+    assert.equal(local.getItem(`${prefix}-management-key`), null);
+    assert.equal(session.getItem(`${prefix}-logged-out`), null);
+    scope.clearSavedKeys(true);
+    assert.equal(scope.rememberedLocalKey(), '', '退出后应清除已迁移的密钥');
+  }
 });

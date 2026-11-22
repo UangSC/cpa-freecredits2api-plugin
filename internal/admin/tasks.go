@@ -30,7 +30,7 @@ func (s *Service) handleTasksScan(req pluginapi.ManagementRequest) pluginapi.Man
 }
 
 func (s *Service) handleTasksRun(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
-	// 缺省值与旧行为一致：growth + school 全开、并发 1；请求体只覆盖它给出的字段。
+	// 缺省为并发 1，执行扫描得到的待办。保留旧版 growth / school 的请求字段。
 	body, errDecode := decodeRequestInto(req.Body, tasks.DefaultQueueRequest())
 	if errDecode != nil {
 		return BadJSONRequestResponse()

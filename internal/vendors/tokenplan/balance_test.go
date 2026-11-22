@@ -112,7 +112,7 @@ func TestAuthorizationCallbackIsScopedAndUpdatesOneCredential(t *testing.T) {
 	}
 	authorize, _ := url.Parse(start.URL)
 	callback := authorize.Query().Get("redirect") + "?code=mock-code"
-	if !strings.HasPrefix(callback, balanceOrigin+"/token-plan/points#tierbridge2api-balance/") {
+	if !strings.HasPrefix(callback, balanceOrigin+"/token-plan/points#freecredits2api-balance/") {
 		t.Fatal("回调应使用官网允许的 HTTPS 地址")
 	}
 	token := testBalanceToken(time.Now().Add(time.Hour).Unix())

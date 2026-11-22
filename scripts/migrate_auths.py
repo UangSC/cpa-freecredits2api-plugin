@@ -8,10 +8,8 @@
 
 默认只做**预演**（打印将要发生的改动，不碰文件）。确认无误后加 --apply 执行。
 
-**执行时只新增文件，绝不改动原文件**：旧插件（workbuddy2api / qoder2api）
-仍要读原来的凭证，删改它们会让那些插件立刻失效。因此本脚本把迁移结果写成
-新文件，原文件原样保留。两套文件并存时，旧插件读旧文件、本插件读新文件，
-互不干扰。
+执行时只创建目标名称尚不存在的新文件。目标已存在（包括与原文件同名）时跳过。
+原凭证和迁移后的副本均包含敏感信息。加载前请确认 CPA 中的凭证归属，避免同一账号被重复注册。
 
 用法：
   python3 scripts/migrate_auths.py <auths-dir>            # 预演
@@ -171,17 +169,16 @@ def main() -> int:
     for plan in plans:
         if "error" in plan:
             continue
-        path = plan["path"]
-        directory = os.path.dirname(path)
+        directory = os.path.dirname(plan["path"])
         target = os.path.join(directory, plan["new_name"])
 
-        # 只写新文件，原文件保持不动——旧插件还在读它。
-        if os.path.exists(target) and os.path.abspath(target) != os.path.abspath(path):
+        # 独占创建，目标与原文件同名或被其他迁移进程先写入时都会跳过。
+        try:
+            with open(target, "x", encoding="utf-8", opener=lambda path, flags: os.open(path, flags, 0o600)) as handle:
+                json.dump(plan["payload"], handle, ensure_ascii=False, indent=2)
+        except FileExistsError:
             print(f"  [跳过] {plan['new_name']} 已存在")
             continue
-        with open(target, "w", encoding="utf-8") as handle:
-            json.dump(plan["payload"], handle, ensure_ascii=False, indent=2)
-        os.chmod(target, 0o600)
         print(f"  新增 {plan['new_name']}（原文件 {plan['filename']} 保持不变）")
 
     print("\n迁移完成：已新增上述文件，原文件未改动。")

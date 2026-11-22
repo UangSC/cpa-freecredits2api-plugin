@@ -11,8 +11,8 @@
   var authReady = false;
 
   // ---- 主题、免责提示条与多视图标签切换 ----
-  var THEME_STORE_KEY = "tierbridge-ui-theme";
-  var NOTICE_STORE_KEY = "tierbridge-notice-dismissed";
+  var THEME_STORE_KEY = "freecredits2api-ui-theme";
+  var NOTICE_STORE_KEY = "freecredits2api-notice-dismissed";
   var currentTheme = "auto";
   var activeView = "accounts";
 
@@ -31,7 +31,7 @@
 
   function initTheme() {
     var saved = "auto";
-    try { saved = migrateStoredValue(localStorage, THEME_STORE_KEY, "freetier-ui-theme") || "auto"; } catch (e) { /* 忽略 */ }
+    try { saved = migrateStoredValue(localStorage, THEME_STORE_KEY, "tierbridge-ui-theme", "freetier-ui-theme") || "auto"; } catch (e) { /* 忽略 */ }
     applyTheme(saved);
     var btn = document.getElementById("btnTheme");
     if (btn) {
@@ -52,7 +52,7 @@
 
   function initNotice() {
     var dismissed = false;
-    try { dismissed = migrateStoredValue(localStorage, NOTICE_STORE_KEY, "freetier-notice-dismissed") === "1"; } catch (e) { /* 忽略 */ }
+    try { dismissed = migrateStoredValue(localStorage, NOTICE_STORE_KEY, "tierbridge-notice-dismissed", "freetier-notice-dismissed") === "1"; } catch (e) { /* 忽略 */ }
     setNoticeVisible(!dismissed);
     var closeBtn = document.getElementById("btnCloseDisclaimer");
     var toggleBtn = document.getElementById("btnNoticeToggle");
@@ -109,24 +109,36 @@
   var PANEL_STORE_KEY = "cli-proxy-auth";
   var PANEL_KEY_FIELD = "managementKey";
   var MANUAL_STORE_KEY = "cpa-management-key";
-  var REMEMBER_STORE_KEY = "cpa-tierbridge-management-key";
-  var LOGGED_OUT_STORE_KEY = "cpa-tierbridge-logged-out";
-  var LEGACY_REMEMBER_STORE_KEY = "cpa-freetier-management-key";
-  var LEGACY_LOGGED_OUT_STORE_KEY = "cpa-freetier-logged-out";
+  var REMEMBER_STORE_KEY = "cpa-freecredits2api-management-key";
+  var LOGGED_OUT_STORE_KEY = "cpa-freecredits2api-logged-out";
+  var LEGACY_REMEMBER_STORE_KEYS = ["cpa-tierbridge-management-key", "cpa-freetier-management-key"];
+  var LEGACY_LOGGED_OUT_STORE_KEYS = ["cpa-tierbridge-logged-out", "cpa-freetier-logged-out"];
   var OBF_PREFIX_RE = /^enc::v(\d+)::/;
   var OBF_SEED = "cli-proxy-api-webui::secure-storage";
   var manualKey = "";
   var keyBusy = false;
   var keyRetryAfter = 0;
 
-  function migrateStoredValue(storage, key, legacyKey) {
+  function findStoredValue(storage, keys) {
+    for (var key of keys) {
+      var value = storage.getItem(key);
+      if (value !== null) return value;
+    }
+    return null;
+  }
+
+  function removeStoredValues(storage, keys) {
+    keys.forEach(function (key) { storage.removeItem(key); });
+  }
+
+  function migrateStoredValue(storage, key, ...legacyKeys) {
     var current = storage.getItem(key);
     if (current !== null) return current;
-    var legacy = storage.getItem(legacyKey);
+    var legacy = findStoredValue(storage, legacyKeys);
     if (legacy !== null) {
       try {
         storage.setItem(key, legacy);
-        storage.removeItem(legacyKey);
+        removeStoredValues(storage, legacyKeys);
       } catch (e) { /* 存储只读时继续使用旧值 */ }
     }
     return legacy;
@@ -185,7 +197,7 @@
     try {
       raw = localStorage.getItem(REMEMBER_STORE_KEY);
       legacy = raw === null;
-      if (legacy) raw = localStorage.getItem(LEGACY_REMEMBER_STORE_KEY);
+      if (legacy) raw = findStoredValue(localStorage, LEGACY_REMEMBER_STORE_KEYS);
     } catch (e) { return ""; }
     if (!raw) return "";
     var texts = isObfuscated(raw) ? deobfuscateAll(raw) : [raw];
@@ -203,7 +215,7 @@
       if (legacy) {
         try {
           localStorage.setItem(REMEMBER_STORE_KEY, encodeRememberedKey(key));
-          localStorage.removeItem(LEGACY_REMEMBER_STORE_KEY);
+          removeStoredValues(localStorage, LEGACY_REMEMBER_STORE_KEYS);
         } catch (e) { /* 保留旧值供下次读取 */ }
       }
       return key;
@@ -212,26 +224,26 @@
   }
 
   function isExplicitlyLoggedOut() {
-    try { return migrateStoredValue(sessionStorage, LOGGED_OUT_STORE_KEY, LEGACY_LOGGED_OUT_STORE_KEY) === "1"; } catch (e) { return false; }
+    try { return migrateStoredValue(sessionStorage, LOGGED_OUT_STORE_KEY, ...LEGACY_LOGGED_OUT_STORE_KEYS) === "1"; } catch (e) { return false; }
   }
 
   function saveRememberedKey(key, remember) {
     try { sessionStorage.removeItem(LOGGED_OUT_STORE_KEY); } catch (e) { /* 忽略 */ }
-    try { sessionStorage.removeItem(LEGACY_LOGGED_OUT_STORE_KEY); } catch (e) { /* 忽略 */ }
+    try { removeStoredValues(sessionStorage, LEGACY_LOGGED_OUT_STORE_KEYS); } catch (e) { /* 忽略 */ }
     try { sessionStorage.setItem(MANUAL_STORE_KEY, key); } catch (e) { /* 忽略 */ }
     try {
       if (remember) localStorage.setItem(REMEMBER_STORE_KEY, encodeRememberedKey(key));
       else localStorage.removeItem(REMEMBER_STORE_KEY);
-      localStorage.removeItem(LEGACY_REMEMBER_STORE_KEY);
+      removeStoredValues(localStorage, LEGACY_REMEMBER_STORE_KEYS);
     } catch (e) { /* 忽略 */ }
   }
 
   function clearSavedKeys(markLoggedOut) {
     manualKey = "";
     try { sessionStorage.removeItem(MANUAL_STORE_KEY); } catch (e) { /* 忽略 */ }
-    try { localStorage.removeItem(REMEMBER_STORE_KEY); localStorage.removeItem(LEGACY_REMEMBER_STORE_KEY); } catch (e) { /* 忽略 */ }
+    try { localStorage.removeItem(REMEMBER_STORE_KEY); removeStoredValues(localStorage, LEGACY_REMEMBER_STORE_KEYS); } catch (e) { /* 忽略 */ }
     try {
-      sessionStorage.removeItem(LEGACY_LOGGED_OUT_STORE_KEY);
+      removeStoredValues(sessionStorage, LEGACY_LOGGED_OUT_STORE_KEYS);
       if (markLoggedOut) sessionStorage.setItem(LOGGED_OUT_STORE_KEY, "1");
       else sessionStorage.removeItem(LOGGED_OUT_STORE_KEY);
     } catch (e) { /* 忽略 */ }

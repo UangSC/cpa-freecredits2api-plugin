@@ -97,7 +97,7 @@ func (s *Service) SetModules(reg *core.TaskRegistry) {
 // Modules 返回当前挂载的任务扩展注册表（未挂载时为 nil）。
 func (s *Service) Modules() *core.TaskRegistry { return s.modules }
 
-// ModuleMetas 返回全部已挂载任务扩展模块的元数据快照。
+// ModuleMetas 返回至少有一个已启用渠道的任务模块，并滤掉未启用的渠道 ID。
 func (s *Service) ModuleMetas() []core.TaskModuleMeta {
 	metas := make([]core.TaskModuleMeta, 0)
 	for _, meta := range s.modules.Metas() {
