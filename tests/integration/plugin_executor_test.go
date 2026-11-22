@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/app"
-	"freetier2api-plugin/internal/vendors/workbuddy"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/vendors/workbuddy"
 )
 
 // TestExecutorNonStreamingAggregatesUpstream 验证非流式执行的完整链路。
@@ -47,10 +48,11 @@ func TestExecutorNonStreamingAggregatesUpstream(t *testing.T) {
 
 	result := callMethod(t, pluginabi.MethodExecutorExecute, app.ExecutorRPCRequest{
 		ExecutorRequest: pluginapi.ExecutorRequest{
-			AuthID:  "1",
-			Model:   "cn:glm-5.2",
-			Format:  app.FormatChatCompletions,
-			Payload: []byte(`{"model":"cn:glm-5.2","messages":[{"role":"user","content":"hi"}]}`),
+			AuthID:       "1",
+			Model:        "cn:glm-5.2",
+			Format:       app.FormatChatCompletions,
+			SourceFormat: "anthropic",
+			Payload:      []byte(`{"model":"cn:glm-5.2","messages":[{"role":"user","content":"hi"}]}`),
 		},
 	})
 	var response pluginapi.ExecutorResponse
@@ -86,6 +88,67 @@ func TestExecutorNonStreamingAggregatesUpstream(t *testing.T) {
 	// total_tokens 缺失时应由 prompt + completion 补齐。
 	if aggregated.Usage.TotalTokens != 7 {
 		t.Fatalf("total_tokens = %d, want 7 (derived)", aggregated.Usage.TotalTokens)
+	}
+}
+
+func TestQuotaRPCPreservesCallbackAndFileIdentity(t *testing.T) {
+	host := installFakeHost(t)
+	setupTestPlugin(t)
+	const resetIndex = "901cbd53809d"
+	const resetName = "workbuddycn-quota-account"
+	const fetchIndex = "badc8b77904e"
+	host.addAccount(resetIndex, resetName+".json", personalCredentialJSON("cn", "upstream-user"))
+	host.addAccount(fetchIndex, "traecn-quota-account.json", `{"vendor":"traecn","region":"cn","access_token":"test-access-token","uid":"2487573687317868"}`)
+	host.setUpstream(func(method, url, body string) fakeUpstreamResponse {
+		switch {
+		case strings.Contains(url, "daily-checkin"):
+			return fakeUpstreamResponse{Status: http.StatusOK, Body: `{"code":0,"data":{"credit":10,"energy":5,"streak":3}}`}
+		case strings.Contains(url, "pay/ide_user_ent_usage"):
+			return fakeUpstreamResponse{Status: http.StatusOK, Body: traeQuotaFixture}
+		default:
+			return fakeUpstreamResponse{Status: http.StatusNotFound}
+		}
+	})
+	const callbackID = "quota-request-scope"
+	call := func(method string, request map[string]any, minCallbacks int) json.RawMessage {
+		t.Helper()
+		before := len(host.CallbackIDs())
+		request["host_callback_id"] = callbackID
+		response := callMethod(t, method, request)
+		ids := host.CallbackIDs()[before:]
+		if len(ids) < minCallbacks {
+			t.Fatalf("%s 宿主回调不足，得到 %v", method, ids)
+		}
+		for _, id := range ids {
+			if id != callbackID {
+				t.Fatalf("%s 丢失宿主回调作用域，回调 %v", method, ids)
+			}
+		}
+		return response
+	}
+	var fetched pluginapi.QuotaFetchResponse
+	if errDecode := json.Unmarshal(call(pluginabi.MethodQuotaFetch, map[string]any{"auth_index": fetchIndex}, 2), &fetched); errDecode != nil || len(fetched.Summary) == 0 {
+		t.Fatalf("宿主额度查询失败，响应 %#v，错误 %v", fetched, errDecode)
+	}
+	for _, testCase := range []struct {
+		fileID       string
+		request      map[string]any
+		minCallbacks int
+	}{
+		{fileID: resetName, request: map[string]any{"auth_index": resetIndex}, minCallbacks: 2},
+		{fileID: "workbuddycn-inline", request: map[string]any{
+			"auth_index": "37a1314f8ea8", "auth_id": "workbuddycn-inline",
+			"storage_json": []byte(personalCredentialJSON("cn", "another-upstream-user")),
+		}, minCallbacks: 1},
+	} {
+		var reset pluginapi.QuotaResetResponse
+		if errDecode := json.Unmarshal(call(pluginabi.MethodQuotaReset, testCase.request, testCase.minCallbacks), &reset); errDecode != nil || !reset.Success {
+			t.Fatalf("宿主额度重置失败，响应 %#v，错误 %v", reset, errDecode)
+		}
+		history := testApp.SnapshotState().CheckinHistory[state.CheckinHistoryKey("workbuddycn", testCase.fileID)]
+		if len(history) != 1 || history[0].Credit != 10 {
+			t.Fatalf("签到记录未关联凭证文件 %q，记录 %#v", testCase.fileID, history)
+		}
 	}
 }
 

@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // postLoginCallback 调用管理路由并解出响应体。
@@ -163,18 +162,12 @@ func TestHandleLoginCallbackPersistsCredential(t *testing.T) {
 	}
 }
 
-// TestHandleLoginCallbackReportsPersistFailure 锁定保存失败要说实话：宿主回调与
-// 落盘都失败时，不能页面显示「登录成功」而磁盘上什么都没有。
+// TestHandleLoginCallbackReportsPersistFailure 验证宿主写入失败时页面提示保存失败。
 func TestHandleLoginCallbackReportsPersistFailure(t *testing.T) {
 	hostbridge.Configure(func(callbackID, method string, payload any) (json.RawMessage, error) {
 		return nil, fmt.Errorf("host unavailable")
 	})
 	t.Cleanup(func() { hostbridge.Configure(nil) })
-
-	// 兜底目录指向不存在的路径，让落盘必然失败（不写进测试包目录）。
-	original := authFileDirs
-	authFileDirs = []string{filepath.Join(t.TempDir(), "missing")}
-	t.Cleanup(func() { authFileDirs = original })
 
 	deps := newStubDeps(t)
 	deps.callbackResult = &core.CallbackSubmitResult{

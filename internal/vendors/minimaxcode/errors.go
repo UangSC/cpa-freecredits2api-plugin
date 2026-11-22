@@ -17,7 +17,7 @@ import (
 	"net/http"
 	"strings"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // 关键词表。判定顺序有意义：凭证失效先于余额、余额先于限流——

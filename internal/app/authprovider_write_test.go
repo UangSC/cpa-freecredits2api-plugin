@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // writeStubVendor 是只满足 core.Vendor 的最小实现；mergeStorageJSON 非 nil 时

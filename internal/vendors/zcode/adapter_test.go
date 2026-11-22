@@ -3,7 +3,7 @@ package zcode
 import (
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // TestInstancesExposeDomesticAndInternational 锁住两个独立供应商实例。
@@ -81,11 +81,11 @@ func TestConfigureBaseURLPerInstance(t *testing.T) {
 	cn, global := newTestInstances()
 	cn.Configure(core.Settings{}, map[string]string{configKeyBaseURLCN: "http://cn.test"})
 	global.Configure(core.Settings{}, map[string]string{configKeyBaseURLGlobal: "http://global.test"})
-	if cn.baseURL != "http://cn.test" {
-		t.Fatalf("国内实例 baseURL = %q", cn.baseURL)
+	if cn.baseURL.Load() != "http://cn.test" {
+		t.Fatalf("国内实例 baseURL = %q", cn.baseURL.Load())
 	}
-	if global.baseURL != "http://global.test" {
-		t.Fatalf("国际实例 baseURL = %q", global.baseURL)
+	if global.baseURL.Load() != "http://global.test" {
+		t.Fatalf("国际实例 baseURL = %q", global.baseURL.Load())
 	}
 
 	// 旧族级键两个实例都读：升级前只有一个实例，存量配置必须继续生效。
@@ -93,16 +93,16 @@ func TestConfigureBaseURLPerInstance(t *testing.T) {
 	legacy := map[string]string{configKeyBaseURLLegacy: "http://legacy.test"}
 	cn.Configure(core.Settings{}, legacy)
 	global.Configure(core.Settings{}, legacy)
-	if cn.baseURL != "http://legacy.test" || global.baseURL != "http://legacy.test" {
-		t.Fatalf("旧键未生效：cn=%q global=%q", cn.baseURL, global.baseURL)
+	if cn.baseURL.Load() != "http://legacy.test" || global.baseURL.Load() != "http://legacy.test" {
+		t.Fatalf("旧键未生效：cn=%q global=%q", cn.baseURL.Load(), global.baseURL.Load())
 	}
 
 	// 实例键优先于旧键，避免两处都配时行为不可预期。
 	both := map[string]string{configKeyBaseURLCN: "http://cn.test", configKeyBaseURLLegacy: "http://legacy.test"}
 	cn, _ = newTestInstances()
 	cn.Configure(core.Settings{}, both)
-	if cn.baseURL != "http://cn.test" {
-		t.Fatalf("实例键应优先，baseURL = %q", cn.baseURL)
+	if cn.baseURL.Load() != "http://cn.test" {
+		t.Fatalf("实例键应优先，baseURL = %q", cn.baseURL.Load())
 	}
 }
 

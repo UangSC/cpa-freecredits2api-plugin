@@ -10,8 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // adapter 是 core.Vendor 在 CodeArts 上的实现。

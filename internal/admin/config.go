@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // PluginConfig 是 plugins.configs.freetier2api 解析出的有效全局配置。
@@ -58,10 +58,11 @@ const (
 	DefaultCheckinAt = "10:00"
 	// CheckinHistoryLimitKey 是签到历史条数的配置键。
 	CheckinHistoryLimitKey = "checkin_history_limit"
-	// DefaultStateDirName 是默认状态目录名。
+	// DefaultStateDirName 沿用原目录，以便升级时继续读取现有状态。
 	DefaultStateDirName = ".freetier2api-plugin"
 	// StateDirEnvOverride 是状态目录的环境变量覆盖项。
-	StateDirEnvOverride = "FREETIER2API_PLUGIN_HOME"
+	StateDirEnvOverride       = "TIERBRIDGE2API_PLUGIN_HOME"
+	legacyStateDirEnvOverride = "FREETIER2API_PLUGIN_HOME"
 	// StateFileName 是状态文件名。
 	StateFileName = "state.json"
 	// SaltFileName 是机器盐文件名。
@@ -129,7 +130,7 @@ func DefaultPluginConfig() PluginConfig {
 //
 // 三级回退是为了让插件在只读 HOME（容器、CI）里也能起来。
 func DefaultStateDir() string {
-	if env := strings.TrimSpace(os.Getenv(StateDirEnvOverride)); env != "" {
+	if env := core.FirstNonEmpty(os.Getenv(StateDirEnvOverride), os.Getenv(legacyStateDirEnvOverride)); env != "" {
 		return env
 	}
 	if home, errHome := os.UserHomeDir(); errHome == nil && strings.TrimSpace(home) != "" {

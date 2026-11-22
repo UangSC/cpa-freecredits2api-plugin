@@ -53,7 +53,7 @@ func TestSchemaCompactionLeavesScopedAndCollidingSchemasUntouched(t *testing.T) 
 		}
 	}
 	original := testRepeatedSchema()
-	original["$defs"] = map[string]any{"freetier_schema_0": map[string]any{"type": "boolean"}}
+	original["$defs"] = map[string]any{"tierbridge_schema_0": map[string]any{"type": "boolean"}}
 	if schemaKey(compactSchema(original)) != schemaKey(original) {
 		t.Fatal("新引用不得覆盖已有定义")
 	}

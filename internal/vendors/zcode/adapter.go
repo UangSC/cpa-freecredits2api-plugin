@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // 本文件把 ZCode 适配成 core.Vendor。
@@ -40,7 +40,7 @@ type adapter struct {
 	// region / provider 固定本实例的登录来源。
 	region   string
 	provider string
-	baseURL  string
+	baseURL  core.StringSetting
 	// claims 是本实例的领取节流器；不共享，多 App 并存时互不影响。
 	claims *claimGate
 	// activations 是本实例的活跃上报去重表（每账号每日一次）。
@@ -111,7 +111,7 @@ func (v *adapter) AuthMode() string { return "oauth" }
 // 基地址按实例拆键：两个实例报同一个键会让宿主配置表单出现两条同名项。
 // 旧族级键 configKeyBaseURLLegacy 两个实例都读，升级后行为不变。
 func (v *adapter) Configure(_ core.Settings, raw map[string]string) {
-	v.baseURL = strings.TrimSpace(core.FirstNonEmpty(raw[v.baseURLKey()], raw[configKeyBaseURLLegacy]))
+	v.baseURL.Store(strings.TrimSpace(core.FirstNonEmpty(raw[v.baseURLKey()], raw[configKeyBaseURLLegacy])))
 	if interval, errParse := time.ParseDuration(strings.TrimSpace(raw[configKeyClaimMinInterval])); errParse == nil && interval >= 0 {
 		v.claims.setInterval(interval)
 	}
@@ -183,7 +183,7 @@ func (v *adapter) Execute(ctx context.Context, cred *core.Credential, req *core.
 	}
 	defer release()
 
-	payload, errChat := Chat(ctx, v.baseURL, ChatRequest{
+	payload, errChat := Chat(ctx, v.baseURL.Load(), ChatRequest{
 		Credential: native,
 		Body:       req.Payload,
 		Stream:     false,
@@ -209,7 +209,7 @@ func (v *adapter) ExecuteStream(ctx context.Context, cred *core.Credential, req 
 	}
 	defer release()
 
-	return ChatStream(ctx, v.baseURL, ChatRequest{
+	return ChatStream(ctx, v.baseURL.Load(), ChatRequest{
 		Credential: native,
 		Body:       req.Payload,
 		Stream:     true,

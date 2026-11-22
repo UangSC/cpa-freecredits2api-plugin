@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // 额度查询的两处重试：凭证保活（401）与传输层故障。

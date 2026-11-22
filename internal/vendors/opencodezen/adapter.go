@@ -17,16 +17,16 @@ import (
 	"context"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // adapter 是 core.Vendor 在 OpenCode ZEN 上的实现。
 type adapter struct {
 	*core.NativeAdapter[*Credential]
-	baseURL string
+	baseURL core.StringSetting
 	// modelsDev 是 models.dev 目录缓存，随实例隔离。
 	modelsDev modelsDevCache
 	// credits 缓存最近一轮探测的倍率表（官方模型 ID → 展示文案）。
@@ -63,7 +63,7 @@ func Instances(env core.Env) []core.Vendor {
 
 // Configure 解析供应商专属配置。
 func (v *adapter) Configure(_ core.Settings, raw map[string]string) {
-	v.baseURL = strings.TrimSpace(raw["opencodezen_base_url"])
+	v.baseURL.Store(strings.TrimSpace(raw["opencodezen_base_url"]))
 }
 
 // Match 判断一份凭证是否属于本供应商。
@@ -83,7 +83,7 @@ func (v *adapter) StaticModels(ctx context.Context) ([]pluginapi.ModelInfo, erro
 	if apiKey == "" {
 		apiKey = freeTierCredential
 	}
-	models, errModels := FetchModels(ctx, v.baseURL, apiKey)
+	models, errModels := FetchModels(ctx, v.baseURL.Load(), apiKey)
 	if errModels != nil {
 		return nil, errModels
 	}
@@ -111,7 +111,7 @@ func (v *adapter) ModelsForAuth(ctx context.Context, cred *core.Credential) ([]p
 	if strings.TrimSpace(apiKey) == "" {
 		apiKey = freeTierCredential
 	}
-	models, errModels := FetchModels(ctx, v.baseURL, apiKey)
+	models, errModels := FetchModels(ctx, v.baseURL.Load(), apiKey)
 	if errModels != nil {
 		// 探测失败返回空清单而不是报错：宿主会因为空清单跳过该凭证，
 		// 这正是我们想要的结果（避免用坏 key 打上游）。
@@ -185,7 +185,7 @@ func (v *adapter) Execute(ctx context.Context, cred *core.Credential, req *core.
 	if errNative != nil {
 		return nil, errNative
 	}
-	payload, errChat := Chat(ctx, v.baseURL, ChatRequest{
+	payload, errChat := Chat(ctx, v.baseURL.Load(), ChatRequest{
 		APIKey:  native.APIKey,
 		Body:    req.Payload,
 		Headers: req.Headers,
@@ -210,7 +210,7 @@ func (v *adapter) ExecuteStream(ctx context.Context, cred *core.Credential, req 
 	if errNative != nil {
 		return errNative
 	}
-	resp, renames, errStream := ChatStream(ctx, v.baseURL, ChatRequest{
+	resp, renames, errStream := ChatStream(ctx, v.baseURL.Load(), ChatRequest{
 		APIKey:  native.APIKey,
 		Body:    req.Payload,
 		Headers: req.Headers,

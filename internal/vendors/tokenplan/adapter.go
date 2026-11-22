@@ -5,14 +5,14 @@ import (
 	"strings"
 	"sync"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 type adapter struct {
 	*core.NativeAdapter[*Credential]
-	baseURL           string
+	baseURL           core.StringSetting
 	quotaAuthSessions sync.Map
 }
 
@@ -30,7 +30,7 @@ func Instances(env core.Env) []core.Vendor {
 				Label: core.FirstNonEmpty(cred.Label, core.MaskKey(cred.APIKey)), Token: cred.APIKey, AuthMode: "apikey"}, cred, nil
 		},
 		RefreshNative: func(ctx context.Context, cred *Credential) (core.NativeRefresh[*Credential], error) {
-			return validateCredential(ctx, inst.baseURL, cred)
+			return validateCredential(ctx, inst.baseURL.Load(), cred)
 		},
 	})
 	return []core.Vendor{inst}
@@ -40,7 +40,7 @@ func (v *adapter) Match(fileName, provider string, raw map[string]any) bool {
 	return LooksLikeCredential(raw, fileName, provider)
 }
 func (v *adapter) Configure(_ core.Settings, settings map[string]string) {
-	v.baseURL = strings.TrimSpace(settings["tokenplan_base_url"])
+	v.baseURL.Store(strings.TrimSpace(settings["tokenplan_base_url"]))
 }
 func (v *adapter) ConfigFields() []pluginapi.ConfigField {
 	return []pluginapi.ConfigField{{Name: "tokenplan_base_url", Type: pluginapi.ConfigFieldTypeString, Description: "Token Plan OpenAI API 基地址，默认 https://discovery-api.intern-ai.org.cn/v1。"}}
@@ -50,14 +50,14 @@ func (v *adapter) StaticModels(ctx context.Context) ([]pluginapi.ModelInfo, erro
 	if !ok || cred == nil {
 		return nil, nil
 	}
-	return FetchModels(ctx, v.baseURL, cred.APIKey)
+	return FetchModels(ctx, v.baseURL.Load(), cred.APIKey)
 }
 func (v *adapter) ModelsForAuth(ctx context.Context, credential *core.Credential) ([]pluginapi.ModelInfo, error) {
 	cred, err := v.Native(credential)
 	if err != nil {
 		return nil, err
 	}
-	return FetchModels(ctx, v.baseURL, cred.APIKey)
+	return FetchModels(ctx, v.baseURL.Load(), cred.APIKey)
 }
 func (v *adapter) VetoModelFallback() bool { return true }
 func (v *adapter) Execute(ctx context.Context, credential *core.Credential, req *core.ExecuteRequest) (*pluginapi.ExecutorResponse, error) {
@@ -73,7 +73,7 @@ func (v *adapter) Execute(ctx context.Context, credential *core.Credential, req 
 	if err != nil {
 		return nil, err
 	}
-	payload, err := Chat(ctx, v.baseURL, cred.APIKey, body)
+	payload, err := Chat(ctx, v.baseURL.Load(), cred.APIKey, body)
 	if err != nil {
 		return nil, core.ToPluginError(err)
 	}
@@ -92,7 +92,7 @@ func (v *adapter) ExecuteStream(ctx context.Context, credential *core.Credential
 	if err != nil {
 		return err
 	}
-	response, err := ChatStream(ctx, v.baseURL, cred.APIKey, body)
+	response, err := ChatStream(ctx, v.baseURL.Load(), cred.APIKey, body)
 	if err != nil {
 		return core.ToPluginError(err)
 	}

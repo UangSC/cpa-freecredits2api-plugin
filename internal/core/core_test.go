@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // fakeVendor 是最小可用的 Vendor 实现（只实现必需能力）。

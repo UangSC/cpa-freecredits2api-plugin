@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // 本文件锁定每日活跃奖励（国际版签到）的关键判据。
@@ -334,12 +334,12 @@ func TestRunGrowthTaskSurfacesClaimFailure(t *testing.T) {
 	cred := testGlobalCredential("uid-claim")
 	cred.SetRealm(RegionCN)
 
-	_, _, _, errRun := runGrowthTask(context.Background(), client, cred, "chat_5")
-	if errRun == nil {
+	result := runGrowthRow(context.Background(), client, cred, *autoActionFor("chat_5"))
+	if result.Status != core.AutoStatusError {
 		t.Fatal("领奖响应不可解析时必须报错，不能报成「任务已达标」")
 	}
-	if !strings.Contains(errRun.Error(), "领奖失败") {
-		t.Fatalf("error = %v, want 领奖失败", errRun)
+	if !strings.Contains(result.Message, "领奖失败") {
+		t.Fatalf("message = %q, want 领奖失败", result.Message)
 	}
 }
 
@@ -353,15 +353,36 @@ func TestRunGrowthTaskReportsClaimedReward(t *testing.T) {
 	cred := testGlobalCredential("uid-claim")
 	cred.SetRealm(RegionCN)
 
-	message, credit, energy, errRun := runGrowthTask(context.Background(), client, cred, "chat_5")
-	if errRun != nil {
-		t.Fatalf("正常领奖不应报错: %v", errRun)
+	result := runGrowthRow(context.Background(), client, cred, *autoActionFor("chat_5"))
+	if result.Status != core.AutoStatusDone {
+		t.Fatalf("正常领奖应完成：%+v", result)
 	}
-	if credit != 12 || energy != 3 {
-		t.Fatalf("reward = %d/%d, want 12/3", credit, energy)
+	if result.Credit != 12 || result.Energy != 3 {
+		t.Fatalf("reward = %d/%d, want 12/3", result.Credit, result.Energy)
 	}
-	if !strings.Contains(message, "已领奖") {
-		t.Fatalf("message = %q, want 已领奖", message)
+	if !strings.Contains(result.Message, "已领奖") {
+		t.Fatalf("message = %q, want 已领奖", result.Message)
+	}
+}
+
+func TestRetiredSchoolSeasonDoesNotRun(t *testing.T) {
+	for _, spec := range TaskSpecsFor(RegionCN) {
+		if spec.Kind == TaskKindSchool || spec.Route == "/school/run" {
+			t.Fatalf("已结束的开学季仍注册了任务：%+v", spec)
+		}
+	}
+	vendor := &adapter{region: RegionCN}
+	ctx := context.Background()
+	for _, code := range []string{AutoTaskCodeSchool, "school_daily"} {
+		if result, err := vendor.RunTask(ctx, nil, code); err != nil || result.Status != core.AutoStatusSkipped {
+			t.Fatalf("退休任务 %q 返回 %+v / %v", code, result, err)
+		}
+	}
+	if result, err := vendor.RunScheduled(ctx, nil, TaskKindSchool); result != "" || err != nil {
+		t.Fatalf("退休任务排程返回 %q / %v", result, err)
+	}
+	if result := vendor.TaskStatus(ctx, nil); result.InPeriod || len(result.Tasks) != 0 || result.Error != "" {
+		t.Fatalf("退休活动的状态：%+v", result)
 	}
 }
 

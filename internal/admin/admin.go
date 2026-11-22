@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/state"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
 const (
@@ -43,6 +43,7 @@ type Deps interface {
 	Config() PluginConfig
 	State() state.State
 	MutateState(func(*state.State))
+	SaveStateChange(func(*state.State)) error
 	Model() *Catalog
 	RefreshModels(ctx context.Context) (int, error)
 	// SendLoginSMS 发送短信验证码（vendorID 定位实现 SMSLoginProvider 的实例）。
@@ -55,23 +56,23 @@ type Deps interface {
 	StartLogin(ctx context.Context, vendorID string, metadata map[string]any) (*pluginapi.AuthLoginStartResponse, error)
 	// LoginCaptchaConfig 取登录前的人机验证控件参数。
 	LoginCaptchaConfig(ctx context.Context, vendorID string) (core.CaptchaConfig, error)
-	Reconfigure() error
+	ApplyRuntimeSettings()
 }
 
 // Service 是管理接口的实例。
 type Service struct {
-	deps     Deps
-	registry *core.Registry
-	pool     *auth.Pool
-	tasks    *tasks.Service
+	deps       Deps
+	registry   *core.Registry
+	pool       *auth.Pool
+	tasks      *tasks.Service
+	settingsMu sync.Mutex
 
 	quotaMu    sync.RWMutex
 	quotaCache map[string]quotaResult
 
-	// quotaRunMu 保护 quotaRun：非 nil 表示有一轮额度查询正在后台执行。
-	// 页面刷新会取消自己的管理 RPC，但后台这一轮要照常跑完（见 quota.go）。
+	// quotaRunMu 保护后台查询轮次及该轮覆盖的账号。
 	quotaRunMu sync.Mutex
-	quotaRun   chan struct{}
+	quotaRun   *quotaBatch
 }
 
 // New 构造管理 Service。
@@ -91,7 +92,7 @@ func (s *Service) Registration() pluginapi.ManagementRegistrationResponse {
 		Resources: []pluginapi.ResourceRoute{{
 			Path:        "/console",
 			Menu:        id.DisplayName,
-			Description: "FreeTier 账号、任务与额度管理页。",
+			Description: "账号、额度、模型及任务管理。",
 		}},
 	}
 }
@@ -115,14 +116,15 @@ func (s *Service) managementRoutes(prefix string) []pluginapi.ManagementRoute {
 		{Method: "POST", Path: prefix + "/models/refresh", Description: "从上游拉取模型清单并缓存。"},
 		{Method: "GET", Path: prefix + "/logs", Description: "读取插件日志（增量）。"},
 		{Method: "POST", Path: prefix + "/settings", Description: "更新插件运行期设置（自动签到、任务排程、提示词）。"},
-		{Method: "POST", Path: prefix + "/tasks/scan", Description: "扫描全部账号的待办任务。"},
+		{Method: "GET", Path: prefix + "/tasks/modules", Description: "列出已挂载的任务/活动扩展模块与能力元数据。"},
+		{Method: "POST", Path: prefix + "/tasks/scan", Description: "扫描全部支持扫描的账号待办任务。"},
 		{Method: "POST", Path: prefix + "/tasks/run", Description: "执行任务队列（账号内串行、账号间并发）。"},
 		{Method: "GET", Path: prefix + "/tasks/queue", Description: "查询任务队列进度。"},
 		{Method: "POST", Path: prefix + "/tasks/auto", Description: "对单个账号执行单个任务或一键完成。"},
 		{Method: "POST", Path: prefix + "/tasks/auto_all", Description: "在后台对全部账号依次执行一键完成，立即返回任务编号。"},
 		{Method: "GET", Path: prefix + "/tasks/auto_all/status", Description: "查询后台一键完成的进度与结果。"},
 		{Method: "GET", Path: prefix + "/school/status", Description: "开学季活动状态。"},
-		{Method: "POST", Path: prefix + "/keepalive", Description: "手动执行 token 保活。"},
+		{Method: "POST", Path: prefix + "/keepalive", Description: "手动更新账号凭证。"},
 		{Method: "POST", Path: prefix + "/plans/preview", Description: "查询账号当前可领套餐与人机验证控件参数。"},
 		{Method: "POST", Path: prefix + "/activities/preview", Description: "只读探测账号当前活动资格，不执行领取。"},
 		{Method: "POST", Path: prefix + "/plans/claim", Description: "提交人机验证令牌并领取套餐。"},
@@ -132,11 +134,8 @@ func (s *Service) managementRoutes(prefix string) []pluginapi.ManagementRoute {
 		{Method: "POST", Path: prefix + "/login/sms/send", Description: "发送短信验证码（支持手机验证码登录的供应商）。"},
 		{Method: "POST", Path: prefix + "/login/sms/verify", Description: "用短信验证码完成登录并保存账号。"},
 	}
-	for _, spec := range s.tasks.Catalog().ManualSpecs() {
-		if spec.Route == "" {
-			continue
-		}
-		routes = append(routes, pluginapi.ManagementRoute{Method: "POST", Path: prefix + spec.Route, Description: spec.Description})
+	for _, route := range s.tasks.ManualRoutes() {
+		routes = append(routes, pluginapi.ManagementRoute{Method: "POST", Path: prefix + route.Path, Description: route.Description})
 	}
 	return routes
 }
@@ -160,7 +159,7 @@ func (s *Service) Handle(request []byte) ([]byte, error) {
 
 	switch {
 	case method == http.MethodGet && matchesResourcePath(rpc.Path, id.ID, "/console"):
-		return core.OKEnvelope(HTMLResponse(http.StatusOK, []byte(Page("/plugins/"+id.ID))))
+		return core.OKEnvelope(HTMLResponse(http.StatusOK, []byte(Page("/plugins/"+id.ID, id))))
 
 	case method == http.MethodGet && matchesManagementPath(rpc.Path, id.ID, "/status"):
 		return core.OKEnvelope(JSONResponse(http.StatusOK, s.buildStatusPayload(rpc)))
@@ -220,6 +219,8 @@ func (s *Service) Handle(request []byte) ([]byte, error) {
 	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/keepalive"):
 		return core.OKEnvelope(s.handleKeepaliveRequest(rpc))
 
+	case method == http.MethodGet && matchesManagementPath(rpc.Path, id.ID, "/tasks/modules"):
+		return core.OKEnvelope(s.handleTasksModules(rpc))
 	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/tasks/scan"):
 		return core.OKEnvelope(s.handleTasksScan(rpc))
 	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/tasks/run"):
@@ -254,9 +255,9 @@ func (s *Service) Handle(request []byte) ([]byte, error) {
 	}
 	if method == http.MethodPost {
 		if suffix, okSuffix := managementSuffix(rpc.Path, id.ID); okSuffix {
-			for _, spec := range s.tasks.Catalog().ManualSpecs() {
-				if spec.Route != "" && suffix == spec.Route {
-					return core.OKEnvelope(s.handleScheduledRun(rpc, spec.Kind))
+			for _, route := range s.tasks.ManualRoutes() {
+				if suffix == route.Path {
+					return core.OKEnvelope(s.handleScheduledRun(route))
 				}
 			}
 		}
@@ -357,8 +358,11 @@ func JSONResponse(status int, payload any) pluginapi.ManagementResponse {
 	}
 	return pluginapi.ManagementResponse{
 		StatusCode: status,
-		Headers:    http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
-		Body:       raw,
+		Headers: http.Header{
+			"Content-Type":          {"application/json; charset=utf-8"},
+			"X-Tierbridge-Response": {"management"},
+		},
+		Body: raw,
 	}
 }
 

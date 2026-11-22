@@ -3,7 +3,7 @@ package minimaxcode
 import (
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 func TestConfigureBaseURLPerInstance(t *testing.T) {
@@ -18,10 +18,10 @@ func TestConfigureBaseURLPerInstance(t *testing.T) {
 		"minimaxcode_cn_base_url":     "http://minimax-cn.test",
 		"minimaxcode_global_base_url": "http://minimax-global.test",
 	})
-	if cn.baseURL != "http://minimax-cn.test" {
-		t.Fatalf("cn baseURL = %q", cn.baseURL)
+	if cn.baseURL.Load() != "http://minimax-cn.test" {
+		t.Fatalf("cn baseURL = %q", cn.baseURL.Load())
 	}
-	if global.baseURL != "http://minimax-global.test" {
-		t.Fatalf("global baseURL = %q", global.baseURL)
+	if global.baseURL.Load() != "http://minimax-global.test" {
+		t.Fatalf("global baseURL = %q", global.baseURL.Load())
 	}
 }

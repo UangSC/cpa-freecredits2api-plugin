@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // PluginError 是 Qoder 的上游错误（与其它供应商共用同一类型）。

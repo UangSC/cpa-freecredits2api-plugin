@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	accountpkg "freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/safe"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	accountpkg "cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // quotaJob 是额度查询里的一个账号任务。
@@ -18,6 +18,15 @@ type quotaJob struct {
 	entry      core.HostAuth
 	vendor     core.Vendor
 	credential *core.Credential
+}
+
+type quotaBatch struct {
+	done chan struct{}
+	keys map[string]bool
+}
+
+func (j quotaJob) cacheKey() string {
+	return quotaCacheKey(j.vendor.ID(), j.credential.FileIDValue(), core.FirstNonEmpty(j.entry.ID, j.entry.Name))
 }
 
 // identity 返回该任务的账号身份字段（结果与缓存共用）。
@@ -140,7 +149,7 @@ func (s *Service) handleQuotasRequest(req pluginapi.ManagementRequest) pluginapi
 	// 查询跑在**后台作用域**（空 callback ID + 独立超时），不跟随本次管理 RPC：
 	// 页面刷新/关闭会让宿主取消这条 RPC，若查询挂在它的 context 上，这一轮
 	// 一个账号都写不进缓存，账号表就只能显示「查询中…」。
-	// 已有一轮在跑时不重复打上游：等它结束，再回读缓存。
+	// 同一账号共享正在执行的查询。上一轮未覆盖的账号在该轮结束后再查询。
 	jobs := make([]quotaJob, 0, len(loaded))
 	for _, account := range loaded {
 		if provider, ok := core.As[core.QuotaCredentialProvider](account.Vendor); ok && !provider.QuotaCredentialBound(account.Credential) {
@@ -159,14 +168,18 @@ func (s *Service) handleQuotasRequest(req pluginapi.ManagementRequest) pluginapi
 		// 全是失败项或不支持额度的账号：没有要跑的一轮，直接回结果。
 		return JSONResponse(http.StatusOK, map[string]any{"ok": true, "results": results})
 	}
-	done, owner := s.acquireQuotaRun()
-	if owner {
-		safe.Go("quota batch", func() { s.runQuotaBatch(done, jobs) })
-	}
-	select {
-	case <-done:
-	case <-ctx.Done():
-		// 页面已走开：不阻塞后台那一轮，直接回当前缓存（可能只完成了一部分）。
+	for pending := jobs; len(pending) > 0 && ctx.Err() == nil; {
+		run, remaining, owner := s.acquireQuotaRun(pending)
+		if owner {
+			batchJobs := pending
+			safe.Go("quota batch", func() { s.runQuotaBatch(run, batchJobs) })
+		}
+		select {
+		case <-run.done:
+		case <-ctx.Done():
+			// 管理请求取消时，已启动的后台批次继续运行。
+		}
+		pending = remaining
 	}
 
 	for _, job := range jobs {
@@ -181,36 +194,45 @@ func (s *Service) handleQuotasRequest(req pluginapi.ManagementRequest) pluginapi
 	return JSONResponse(http.StatusOK, map[string]any{"ok": true, "results": results})
 }
 
-// acquireQuotaRun 取得「额度查询轮次」的执行权。
-//
-// 返回本轮完成信号与是否为发起者。已有一轮在跑时返回它的完成信号，
-// 调用方等同一轮结束即可，避免刷新页面时把同一批账号重复打向上游。
-func (s *Service) acquireQuotaRun() (chan struct{}, bool) {
+// acquireQuotaRun 加入正在运行的批次，返回还需要单独查询的账号。
+func (s *Service) acquireQuotaRun(jobs []quotaJob) (*quotaBatch, []quotaJob, bool) {
 	s.quotaRunMu.Lock()
 	defer s.quotaRunMu.Unlock()
 	if s.quotaRun != nil {
-		return s.quotaRun, false
+		var remaining []quotaJob
+		for _, job := range jobs {
+			if !s.quotaRun.keys[job.cacheKey()] {
+				remaining = append(remaining, job)
+			}
+		}
+		return s.quotaRun, remaining, false
 	}
-	s.quotaRun = make(chan struct{})
-	return s.quotaRun, true
+	run := &quotaBatch{done: make(chan struct{}), keys: make(map[string]bool, len(jobs))}
+	for _, job := range jobs {
+		if key := job.cacheKey(); key != "" {
+			run.keys[key] = true
+		}
+	}
+	s.quotaRun = run
+	return run, nil, true
 }
 
 // finishQuotaRun 结束本轮：先关完成信号，再交出执行权。
-func (s *Service) finishQuotaRun(done chan struct{}) {
+func (s *Service) finishQuotaRun(run *quotaBatch) {
 	s.quotaRunMu.Lock()
-	if s.quotaRun == done {
+	defer s.quotaRunMu.Unlock()
+	close(run.done)
+	if s.quotaRun == run {
 		s.quotaRun = nil
 	}
-	s.quotaRunMu.Unlock()
-	close(done)
 }
 
 // runQuotaBatch 在后台作用域里查询全部账号额度，逐个写缓存。
 //
 // 每个账号完成即写缓存（成功与失败都写），因此页面在轮次中途刷新也能
 // 看到已完成的账号，而不是整批退回「查询中」。
-func (s *Service) runQuotaBatch(done chan struct{}, jobs []quotaJob) {
-	defer s.finishQuotaRun(done)
+func (s *Service) runQuotaBatch(run *quotaBatch, jobs []quotaJob) {
+	defer s.finishQuotaRun(run)
 
 	ctx, cancel := context.WithTimeout(hostbridge.WithCallbackID(context.Background(), ""), requestTimeout)
 	defer cancel()
@@ -220,15 +242,7 @@ func (s *Service) runQuotaBatch(done chan struct{}, jobs []quotaJob) {
 		// **成功与失败都要缓存**：缓存是账号表唯一的数据源。只缓存成功结果会让
 		// 失败账号在下次 /status 时退回「没有结果」，页面于是永远停在「查询中…」——
 		// 而「上游没有额度接口」这类结论早已确定，不存在还会变。
-		defer func() {
-			result := outcome.result
-			// 失败时保留的上次读数不写回缓存：缓存要保持「最后一次成功」，
-			// 否则 Stale 标记会一直粘着，下次成功前页面永远显示非实时。
-			if result.Stale {
-				return
-			}
-			s.cacheQuotaResult(result)
-		}()
+		defer func() { s.cacheQuotaResult(outcome.result) }()
 		// 先于上面的缓存 defer 执行：panic 也写一条带原因的失败结果进缓存，
 		// 账号表不会停在「查询中…」。
 		defer func() {

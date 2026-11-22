@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // TestSessionStoresAreIsolated 锁定「登录会话与回调监听都属于实例」。

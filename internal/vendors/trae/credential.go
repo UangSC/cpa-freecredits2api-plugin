@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // 本文件实现 Trae 家族凭证的解析、特征识别与存储。

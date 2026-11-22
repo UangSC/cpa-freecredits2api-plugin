@@ -5,7 +5,7 @@ package opencodezen
 import (
 	"strings"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // Classify 按 HTTP 状态码与响应体分类一个上游错误。

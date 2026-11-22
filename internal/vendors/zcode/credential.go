@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // ZCode 凭证的解析、特征识别与脱敏。

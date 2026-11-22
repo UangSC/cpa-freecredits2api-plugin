@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // fakeVendor 是最小可注册供应商：模型层只用到身份与区域。

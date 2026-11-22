@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 type fixedContextTestVendor struct{ fakeVendor }

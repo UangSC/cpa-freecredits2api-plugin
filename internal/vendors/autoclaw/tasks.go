@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // checkinTaskID 是每日签到任务的任务 ID。

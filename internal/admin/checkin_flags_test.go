@@ -9,7 +9,7 @@ package admin
 import (
 	"testing"
 
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 func TestCheckinFlagsTreatsHistoricalLastDateAsPending(t *testing.T) {

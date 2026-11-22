@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 type Model struct {

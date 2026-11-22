@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 const workspaceConfigBody = `{"models":[
@@ -168,7 +168,7 @@ func TestPrepareReusesWorkspaceCatalog(t *testing.T) {
 func TestModelsForAuthMergesStaticAndWorkspace(t *testing.T) {
 	base, _ := stubWorkspaceHost(t, http.StatusOK, workspaceConfigBody)
 	v := newInstance(core.Env{}, RegionCN).(*adapter)
-	v.baseURL = base
+	v.baseURL.Store(base)
 	cred := &core.Credential{Native: &Credential{Region: RegionCN, AccessToken: "t", UserID: "u3"}}
 
 	models, err := v.ModelsForAuth(context.Background(), cred)
@@ -207,7 +207,7 @@ func TestModelsForAuthMergesStaticAndWorkspace(t *testing.T) {
 func TestModelsForAuthFallsBackToStatic(t *testing.T) {
 	base, _ := stubWorkspaceHost(t, http.StatusInternalServerError, `{}`)
 	v := newInstance(core.Env{}, RegionCN).(*adapter)
-	v.baseURL = base
+	v.baseURL.Store(base)
 	cred := &core.Credential{Native: &Credential{Region: RegionCN, AccessToken: "t", UserID: "u4"}}
 
 	models, err := v.ModelsForAuth(context.Background(), cred)

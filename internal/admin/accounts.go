@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
-	"freetier2api-plugin/internal/safe"
-	"freetier2api-plugin/internal/state"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
 // StatusPayload 构造账号状态概览（导出给根层测试/兼容包装）。
@@ -113,6 +113,9 @@ type accountSummary struct {
 	// Claim 是该账号的套餐领取状态；SupportsClaim 为 false 时前端不渲染入口。
 	Claim         *state.ClaimRecord `json:"claim,omitempty"`
 	SupportsClaim bool               `json:"supports_claim"`
+	// SupportsTasks / TaskModules 声明该账号实际挂载的可插拔任务模块（按渠道+账号精确隔离）。
+	SupportsTasks bool     `json:"supports_tasks"`
+	TaskModules   []string `json:"task_modules,omitempty"`
 	// CheckinHistory 是该账号最近的签到执行记录（新→旧，最多 checkin_history_limit 条）。
 	CheckinHistory []state.CheckinHistoryEntry `json:"checkin_history,omitempty"`
 }
@@ -196,6 +199,12 @@ func (s *Service) listAccountSummaries(ctx context.Context, callbackID string) [
 			SupportsQuota:   supportsQuota(vendor),
 			SupportsClaim:   supportsClaim(vendor),
 		}
+		if s.tasks != nil {
+			if modReg := s.tasks.Modules(); modReg != nil {
+				summary.TaskModules = modReg.AccountModuleIDs(vendor, credential)
+				summary.SupportsTasks = len(summary.TaskModules) > 0
+			}
+		}
 		if provider, ok := core.As[core.QuotaCredentialProvider](vendor); ok {
 			summary.QuotaCredentialHint = provider.QuotaCredentialHint()
 			summary.QuotaCredentialBound = provider.QuotaCredentialBound(credential)
@@ -278,13 +287,6 @@ func lookupLegacyCheckin(current state.State, credential *core.Credential) (stat
 	}
 	record, okRecord := current.Checkin[legacyUID]
 	return record, okRecord
-}
-
-func (s *Service) buildLogsPayload(req pluginapi.ManagementRequest) map[string]any {
-	since := queryInt64(req.Query, "since", 0)
-	limit := int(queryInt64(req.Query, "limit", 200))
-	entries, newest := logger.Snapshot(uint64(since), limit)
-	return map[string]any{"ok": true, "entries": entries, "next": newest}
 }
 
 type accountBatchRequest struct {
@@ -414,12 +416,25 @@ func (s *Service) deleteAuthFile(ctx context.Context, callbackID string, entry c
 	if errSafe != nil {
 		return errSafe
 	}
-	if errRemove := os.Remove(targetPath); errRemove != nil {
+	fileName := filepath.Base(targetPath)
+	// host.auth.save 会按 auth.parse 的结果替换同一文件的运行时记录。
+	// 使用不含令牌的删除标记先注销账号和模型，再移除文件。
+	marker := []byte(`{"type":"` + core.ProviderKey + `","disabled":true,"` + core.AuthRemovalMarker + `":true}`)
+	_, errUnregister := hostbridge.SaveAuth(callbackID, fileName, marker)
+	if errUnregister != nil {
+		logger.Debug("could not unregister auth file %s via host before deletion: %v", fileName, errUnregister)
+	}
+	if errRemove := removeAuthFile(targetPath); errRemove != nil && !os.IsNotExist(errRemove) {
+		if errUnregister == nil {
+			if _, errRestore := hostbridge.SaveAuth(callbackID, fileName, raw); errRestore != nil {
+				return fmt.Errorf("删除文件失败：%w，恢复凭证也失败：%v", errRemove, errRestore)
+			}
+		}
 		return fmt.Errorf("删除文件失败：%w", errRemove)
 	}
-	s.purgeAccountState(raw, filepath.Base(targetPath))
-	logger.Info("deleted auth file %s (vendor=%s)", filepath.Base(targetPath),
-		credentialVendorLabel(s.registry, raw, filepath.Base(targetPath)))
+	s.purgeAccountState(raw, fileName)
+	logger.Info("deleted auth file %s (vendor=%s)", fileName,
+		credentialVendorLabel(s.registry, raw, fileName))
 	return nil
 }
 
@@ -458,9 +473,7 @@ func credentialVendorLabel(registry *core.Registry, raw []byte, fileName string)
 
 // setAuthDisabled 在凭证文件上写/清 disabled 标记。
 //
-// 写回沿用凭证保存的两条路径（见 authfile.go）：优先 host.auth.save，宿主会
-// 同时更新磁盘与内存注册表；不可用时才直接写盘，让宿主自己扫到。校验与删除
-// 同源——先确认这份凭证属于本插件、路径是可写的普通 .json。
+// 写回由宿主同时更新磁盘与内存注册表。校验与删除共用凭证归属和路径检查。
 func (s *Service) setAuthDisabled(ctx context.Context, callbackID string, entry core.HostAuth, disabled bool) error {
 	raw, filePath, okRaw := hostbridge.AuthJSONAndPath(ctx, callbackID, entry.AuthIndex)
 	if !okRaw {
@@ -643,7 +656,7 @@ func (s *Service) handleAccountAliasRequest(req pluginapi.ManagementRequest) plu
 		return JSONResponse(http.StatusBadRequest, map[string]any{"ok": false, "error": "file_id 不能为空"})
 	}
 	alias := strings.TrimSpace(body.Alias)
-	s.deps.MutateState(func(current *state.State) {
+	if errSave := s.deps.SaveStateChange(func(current *state.State) {
 		if alias == "" {
 			delete(current.AccountAliases, fileID)
 			return
@@ -652,7 +665,12 @@ func (s *Service) handleAccountAliasRequest(req pluginapi.ManagementRequest) plu
 			current.AccountAliases = map[string]string{}
 		}
 		current.AccountAliases[fileID] = alias
-	})
+	}); errSave != nil {
+		logger.Error("save account alias failed: %v", errSave)
+		return JSONResponse(http.StatusInternalServerError, map[string]any{
+			"ok": false, "error": "账号别名写盘失败，原设置已保留，请检查状态目录权限和磁盘空间。",
+		})
+	}
 	logger.Info("account %s alias: %q", fileID, alias)
 	return JSONResponse(http.StatusOK, map[string]any{"ok": true, "alias": alias})
 }
@@ -852,7 +870,7 @@ func runGroupedBatch(
 // runWithAuthRetry 在动作因凭证过期（401）失败时，刷新一次凭证再重试。
 //
 // CodeArts 的 STS security token 过期是**可续期**的：不刷新就重试，一键签到
-// 会一直报「token has expired」，用户只能自己去点 Token 续期。只认 401——
+// 会一直报「token has expired」，用户可以手动点「凭证更新」。只认 401——
 // 403 / 参数错误刷新不会变好。刷新与重试逻辑见 withAuthRetry。
 func runWithAuthRetry(
 	credential *core.Credential,

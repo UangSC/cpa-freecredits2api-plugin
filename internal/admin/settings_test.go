@@ -3,11 +3,13 @@ package admin
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // TestNormalizePromptMode 锁住全局提示词过滤模式的取值集合。
@@ -158,5 +160,71 @@ func TestSettingsRequestMarksRestartPending(t *testing.T) {
 	}
 	if registryDirtyOf(t, response) {
 		t.Fatal("生效值未变时不应回 model_registry_dirty=true")
+	}
+}
+
+type settingsTaskVendor struct{ fakeVendor }
+
+func (*settingsTaskVendor) TaskSpecs() []core.TaskSpec {
+	return []core.TaskSpec{{Kind: "keepalive", DefaultHours: []int{9, 21}}}
+}
+
+func TestSettingsScheduleResetKeepsDefaultAndUnrelatedOverrides(t *testing.T) {
+	deps := newStubDeps(t)
+	vendor := &settingsTaskVendor{fakeVendor{Meta: core.Meta{VendorID: "settings-test"}}}
+	if err := deps.registry.Register(vendor); err != nil {
+		t.Fatal(err)
+	}
+	service := newServiceWithDeps(t, deps)
+	if err := deps.SaveStateChange(func(current *state.State) {
+		current.TaskSchedules["keepalive"] = []int{3}
+		current.TaskSchedules["legacy"] = []int{4}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp := service.handleSettingsRequest(pluginapi.ManagementRequest{
+		Body: []byte(`{"task_schedules":{"keepalive":[]}}`),
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, resp.Body)
+	}
+	stored := deps.State().TaskSchedules
+	if _, exists := stored["keepalive"]; exists || len(stored["legacy"]) != 1 {
+		t.Fatalf("unexpected schedule overrides: %+v", stored)
+	}
+	var payload struct {
+		Settings struct {
+			Schedule  map[string][]int `json:"schedule"`
+			Overrides map[string][]int `json:"task_schedule_overrides"`
+		} `json:"settings"`
+	}
+	if err := json.Unmarshal(resp.Body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Settings.Schedule["keepalive"]) == 0 || len(payload.Settings.Overrides) != 0 {
+		t.Fatalf("response should contain effective defaults and no active overrides: %s", resp.Body)
+	}
+}
+
+func TestSettingsWriteFailureKeepsPreviousState(t *testing.T) {
+	deps := newStubDeps(t)
+	dir := t.TempDir()
+	deps.store.Configure(dir)
+	if err := deps.SaveStateChange(func(current *state.State) { current.PromptMode = PromptModeAppend }); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "state.json.tmp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	service := newServiceWithDeps(t, deps)
+	resp := service.handleSettingsRequest(pluginapi.ManagementRequest{
+		Body: []byte(`{"prompt_mode":"custom","model_name_tag":"suffix"}`),
+	})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("write failure reported as success: %s", resp.Body)
+	}
+	stored := deps.State()
+	if stored.PromptMode != PromptModeAppend || stored.ModelNameTag != "" || stored.RestartPending {
+		t.Fatalf("failed save changed runtime state: %+v", stored)
 	}
 }

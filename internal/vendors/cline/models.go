@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // modelsHTTPTimeout 是模型清单请求的上限。

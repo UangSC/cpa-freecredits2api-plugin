@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 
 	"unicode/utf8"
 )

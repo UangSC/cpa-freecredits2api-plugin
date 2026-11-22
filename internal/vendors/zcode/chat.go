@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // 对话转发：OpenAI chat-completions ↔ Anthropic Messages 双向转换。

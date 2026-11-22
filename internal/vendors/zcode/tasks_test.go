@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // 套餐探测与领取的纯函数测试（不触网）。

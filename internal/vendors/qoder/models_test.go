@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 func TestExtractModelsUsesLargestAdvertisedContext(t *testing.T) {

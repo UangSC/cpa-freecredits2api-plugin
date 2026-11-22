@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/hostbridge/hostbridgetest"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/hostbridge/hostbridgetest"
 )
 
 // pastedCallback 是浏览器授权后停在 127.0.0.1 上的真实回调链接样本。

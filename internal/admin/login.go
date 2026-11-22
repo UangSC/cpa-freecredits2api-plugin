@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // loginCallbackRequest 是一次回调粘贴请求。

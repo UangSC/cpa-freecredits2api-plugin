@@ -17,10 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 const (
@@ -69,6 +69,11 @@ func (a *App) handleAuthParse(request []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(rpc.RawJSON, &raw); errUnmarshal != nil {
 		// 非 JSON 的凭证文件不归本插件处理。
 		return core.OKEnvelope(pluginapi.AuthParseResponse{Handled: false})
+	}
+	if (raw[core.AuthRemovalMarker] == true || raw["_freetier2api_remove"] == true) && raw["type"] == providerKey {
+		// CPA 将 handled 且无认证条目解释为撤销该文件原有的全部运行时账号和模型。
+		provider := strings.TrimSpace(rpc.Provider)
+		return core.OKEnvelope(pluginapi.AuthParseResponse{Handled: provider == "" || strings.EqualFold(provider, providerKey)})
 	}
 
 	vendor, okVendor := a.registry.Resolve(rpc.FileName, rpc.Provider, raw)
@@ -131,16 +136,17 @@ func ensureVendorField(storageJSON []byte, vendorID string) ([]byte, error) {
 	if len(storageJSON) == 0 {
 		return storageJSON, nil
 	}
-	var payload map[string]any
-	if errUnmarshal := json.Unmarshal(storageJSON, &payload); errUnmarshal != nil {
+	var payload map[string]json.RawMessage
+	if errUnmarshal := json.Unmarshal(storageJSON, &payload); errUnmarshal != nil || payload == nil {
 		// 解析不了就原样返回：凭证内容由供应商负责，这里不强改。
 		return storageJSON, nil
 	}
-	if existing, okExisting := payload[core.VendorKey].(string); okExisting &&
+	var existing string
+	if json.Unmarshal(payload[core.VendorKey], &existing) == nil &&
 		strings.EqualFold(strings.TrimSpace(existing), vendorID) {
 		return storageJSON, nil
 	}
-	payload[core.VendorKey] = vendorID
+	payload[core.VendorKey], _ = json.Marshal(vendorID)
 	merged, errMarshal := json.MarshalIndent(payload, "", "  ")
 	if errMarshal != nil {
 		return nil, fmt.Errorf("encode vendor field: %w", errMarshal)
@@ -284,7 +290,11 @@ func (a *App) refreshedAuthData(rpc authRefreshRPCRequest, storageJSON []byte, c
 	if !okVendor {
 		return pluginapi.AuthData{}, fmt.Errorf("unknown vendor %q", credential.VendorIDValue())
 	}
-	data, errData := buildAuthDataFor(vendor, credential, rpc.AuthID, storageJSON)
+	fileName := credentialFileName(rpc.Attributes)
+	if fileName == "" && strings.HasSuffix(strings.ToLower(rpc.AuthID), ".json") {
+		fileName = filepath.Base(rpc.AuthID)
+	}
+	data, errData := buildAuthDataFor(vendor, credential, fileName, storageJSON)
 	if errData != nil {
 		return pluginapi.AuthData{}, errData
 	}
@@ -329,7 +339,8 @@ type credentialCacheEntry struct {
 // 因此这里不需要调用方指定供应商，新增供应商也不必改本函数。
 func (a *App) credentialForAuth(ctx context.Context, callbackID string, storageJSON []byte, authID string, attributes map[string]string) (*core.Credential, error) {
 	if len(storageJSON) > 0 {
-		if credential, okParse := a.registry.ParseCredential(storageJSON, authID, attributes); okParse {
+		fileName := core.FirstNonEmpty(credentialFileName(attributes), authID)
+		if credential, okParse := a.registry.ParseCredential(storageJSON, fileName, attributes); okParse {
 			return credential, nil
 		}
 	}
@@ -337,15 +348,24 @@ func (a *App) credentialForAuth(ctx context.Context, callbackID string, storageJ
 		if cached, okCache := a.cachedCredential(trimmed); okCache {
 			return cached, nil
 		}
-		raw, errFetch := hostbridge.FetchAuthJSON(ctx, callbackID, trimmed, a.registry)
-		if errFetch == nil && len(raw) > 0 {
-			if credential, okParse := a.registry.ParseCredential(raw, trimmed, attributes); okParse {
+		fetched, errFetch := hostbridge.FetchAuth(ctx, callbackID, trimmed, a.registry)
+		if errFetch == nil {
+			fileName := core.FirstNonEmpty(fetched.Name, credentialFileName(attributes), trimmed)
+			if credential, okParse := a.registry.ParseCredential(fetched.JSON, fileName, attributes); okParse {
 				a.storeCredential(trimmed, credential)
 				return credential, nil
 			}
 		}
 	}
 	return nil, fmt.Errorf("credential is not available for auth %s", authID)
+}
+
+func credentialFileName(attributes map[string]string) string {
+	path := strings.TrimSpace(attributes["path"])
+	if strings.HasSuffix(strings.ToLower(path), ".json") {
+		return filepath.Base(path)
+	}
+	return ""
 }
 
 func (a *App) cachedCredential(authID string) (*core.Credential, bool) {
@@ -705,7 +725,7 @@ func (a *App) saveRefreshedCredential(ctx context.Context, callbackID string, ve
 	name := authWriteName(entry, targetPath)
 	if okPayload {
 		// SaveAuth 内部做 uid 归一，返回实际写给宿主的 JSON。
-		saved, errSave := hostbridge.SaveAuth(callbackID, name, payload)
+		saved, errSave := hostbridge.SaveAuth(hostbridge.CallbackID(hostbridge.WithCallbackID(ctx, callbackID)), name, payload)
 		if errSave != nil {
 			logger.Debug("keepalive %s: host.auth.save failed: %v", entry.Name, errSave)
 		}

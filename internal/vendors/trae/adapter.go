@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 type adapter struct {
@@ -326,16 +326,21 @@ func (v *adapter) RunScheduled(ctx context.Context, cred *core.Credential, kind 
 		}
 		return "", core.ToPluginError(errClaim)
 	}
-	return SummarizeUG(results), nil
+	status, message := ugAutoStatus(results)
+	switch status {
+	case core.AutoStatusDone:
+		return message, nil
+	case core.AutoStatusError:
+		return "", fmt.Errorf("%s", message)
+	default:
+		return "", nil
+	}
 }
 
 // ---- 一键任务 ----
 
 // AutoTaskCodeUG 是一键任务里「活动福利」那一行的任务码。
 const AutoTaskCodeUG = "(活动福利)"
-
-// ugTaskTitle 是聚合活动任务在扫描结果里显示的名字。
-const ugTaskTitle = "活动福利领取"
 
 // RunTask 执行单条任务。
 //
@@ -518,13 +523,6 @@ func (v *adapter) InspectTasks(ctx context.Context, cred *core.Credential) (core
 			RunCode: AutoTaskCodeUG,
 			Title:   activity.activityTitle(),
 			Target:  1,
-		})
-	}
-	if len(inspection.Items) == 0 {
-		// 竞赛/抽奖这类固定端点没有读取接口，扫不出状态。账号支持活动就给一次
-		// 机会，否则「活动表里没有可领项」会被误读成「今天无事可做」。
-		inspection.Items = append(inspection.Items, core.TaskItem{
-			Kind: TaskKindUG, Code: AutoTaskCodeUG, Title: ugTaskTitle, Target: 1,
 		})
 	}
 	return inspection, nil

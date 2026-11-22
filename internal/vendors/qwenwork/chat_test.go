@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 func chatTestCredential() *Credential {

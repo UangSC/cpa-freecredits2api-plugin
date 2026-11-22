@@ -18,28 +18,32 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // adapter 是 core.Vendor 在小浣熊上的实现。
 type adapter struct {
 	*core.NativeAdapter[*Credential]
-	// llmBase / authBase / pointsBase / origin 是各域基址覆盖（Configure 填充）。
-	llmBase    string
-	authBase   string
-	pointsBase string
-	origin     string
+	endpoints atomic.Pointer[endpointConfig]
 
 	// credits 是「官方模型 ID → 计费倍率文案」，与 models 同源同生命周期。
 	//
 	// 宿主契约（pluginapi.ModelInfo）没有倍率字段，控制台只能通过
 	// core.CreditsProvider 拿到，因此和模型清单在同一轮解析里一起产出。
 	credits core.CreditTable
+}
+
+type endpointConfig struct {
+	llmBase    string
+	authBase   string
+	pointsBase string
+	origin     string
 }
 
 // Instances 构造小浣熊实例（只有一个，没有区域之分）。
@@ -93,10 +97,12 @@ func Instances(env core.Env) []core.Vendor {
 
 // Configure 解析小浣熊专属配置（各域基址覆盖）。
 func (v *adapter) Configure(_ core.Settings, raw map[string]string) {
-	v.llmBase = strings.TrimSpace(raw["raccoon_llm_base_url"])
-	v.authBase = strings.TrimSpace(raw["raccoon_auth_base_url"])
-	v.pointsBase = strings.TrimSpace(raw["raccoon_points_base_url"])
-	v.origin = strings.TrimSpace(raw["raccoon_origin"])
+	v.endpoints.Store(&endpointConfig{
+		llmBase:    strings.TrimSpace(raw["raccoon_llm_base_url"]),
+		authBase:   strings.TrimSpace(raw["raccoon_auth_base_url"]),
+		pointsBase: strings.TrimSpace(raw["raccoon_points_base_url"]),
+		origin:     strings.TrimSpace(raw["raccoon_origin"]),
+	})
 }
 
 // ConfigFields 声明小浣熊专属配置。
@@ -419,7 +425,8 @@ func (v *adapter) SubmitCallback(ctx context.Context, state, rawURL string) (*co
 // loopback 回调与手工粘贴共用这一条路：两条入口的差别只在 code 怎么到手，
 // 换票、取账号信息、落盘格式必须完全一致。
 func (v *adapter) completeLogin(ctx context.Context, code string) (*core.CallbackSubmitResult, error) {
-	access, refresh, expiresAt, uid, errExchange := ExchangeAuthorizationCode(ctx, v.resolveAuthBase(), code)
+	authBase := v.resolveAuthBase()
+	access, refresh, expiresAt, uid, errExchange := ExchangeAuthorizationCode(ctx, authBase, code)
 	if errExchange != nil {
 		return nil, core.ToPluginError(errExchange)
 	}
@@ -430,7 +437,7 @@ func (v *adapter) completeLogin(ctx context.Context, code string) (*core.Callbac
 	if uid != "" {
 		credential.ApplyIdentity(uid, "")
 	}
-	if profile, errInfo := FetchUserProfile(ctx, v.resolveAuthBase(), credential); errInfo == nil {
+	if profile, errInfo := FetchUserProfile(ctx, authBase, credential); errInfo == nil {
 		credential.ApplyIdentity(profile.UID, profile.Nickname)
 		credential.OfficeIdentity = profile.OfficeIdentity
 	}
@@ -505,10 +512,21 @@ func (v *adapter) RunTask(ctx context.Context, cred *core.Credential, code strin
 
 // ---- 内部工具 ----
 
-func (v *adapter) resolveLLMBase() string    { return BaseURL(v.llmBase, DefaultLLMBase) }
-func (v *adapter) resolveAuthBase() string   { return BaseURL(v.authBase, DefaultAuthBase) }
-func (v *adapter) resolvePointsBase() string { return BaseURL(v.pointsBase, DefaultPointsBase) }
-func (v *adapter) resolveOrigin() string     { return BaseURL(v.origin, DefaultOrigin) }
+func (v *adapter) endpointConfig() endpointConfig {
+	if config := v.endpoints.Load(); config != nil {
+		return *config
+	}
+	return endpointConfig{}
+}
+
+func (v *adapter) resolveLLMBase() string { return BaseURL(v.endpointConfig().llmBase, DefaultLLMBase) }
+func (v *adapter) resolveAuthBase() string {
+	return BaseURL(v.endpointConfig().authBase, DefaultAuthBase)
+}
+func (v *adapter) resolvePointsBase() string {
+	return BaseURL(v.endpointConfig().pointsBase, DefaultPointsBase)
+}
+func (v *adapter) resolveOrigin() string { return BaseURL(v.endpointConfig().origin, DefaultOrigin) }
 
 // probeToken 借一个本供应商的可用凭证取 access token（供模型探测用）。
 func (v *adapter) probeToken() string {

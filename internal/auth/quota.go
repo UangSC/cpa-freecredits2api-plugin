@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // Summary 生成一行额度摘要。

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // httpOperation 把本地请求取消传给宿主，不遗弃仍在执行的 CGO 调用。

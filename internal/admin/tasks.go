@@ -5,16 +5,28 @@ package admin
 import (
 	"net/http"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
+func (s *Service) handleTasksModules(_ pluginapi.ManagementRequest) pluginapi.ManagementResponse {
+	metas := s.tasks.ModuleMetas()
+	if metas == nil {
+		metas = []core.TaskModuleMeta{}
+	}
+	return JSONResponse(http.StatusOK, map[string]any{"ok": true, "modules": metas})
+}
+
 func (s *Service) handleTasksScan(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
+	options, errDecode := decodeRequest[tasks.ScanOptions](req.Body)
+	if errDecode != nil {
+		return BadJSONRequestResponse()
+	}
 	ctx, cancel := hostbridge.ManagementContext(req, requestTimeout)
 	defer cancel()
-	return JSONResponse(http.StatusOK, s.tasks.Scan(ctx, hostbridge.RequestCallbackID(req)))
+	return JSONResponse(http.StatusOK, s.tasks.Scan(ctx, hostbridge.RequestCallbackID(req), options))
 }
 
 func (s *Service) handleTasksRun(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
@@ -23,7 +35,9 @@ func (s *Service) handleTasksRun(req pluginapi.ManagementRequest) pluginapi.Mana
 	if errDecode != nil {
 		return BadJSONRequestResponse()
 	}
-	payload, status := s.tasks.StartQueue(body, hostbridge.RequestCallbackID(req))
+	ctx, cancel := hostbridge.ManagementContext(req, requestTimeout)
+	defer cancel()
+	payload, status := s.tasks.StartQueue(ctx, body, hostbridge.RequestCallbackID(req))
 	return JSONResponse(status, payload)
 }
 
@@ -37,6 +51,7 @@ type taskAutoRequest struct {
 	UID       string `json:"uid"`
 	AccountID string `json:"account_id"`
 	TaskCode  string `json:"task_code"`
+	ModuleID  string `json:"module_id,omitempty"`
 }
 
 func (s *Service) handleTasksAuto(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
@@ -47,7 +62,7 @@ func (s *Service) handleTasksAuto(req pluginapi.ManagementRequest) pluginapi.Man
 	ctx, cancel := hostbridge.ManagementContext(req, requestTimeout)
 	defer cancel()
 	identifier := core.FirstNonEmpty(body.AuthID, body.UID, body.AccountID)
-	result, status := s.tasks.RunAuto(ctx, hostbridge.RequestCallbackID(req), identifier, body.TaskCode)
+	result, status := s.tasks.RunAutoModule(ctx, hostbridge.RequestCallbackID(req), identifier, body.TaskCode, body.ModuleID)
 	return JSONResponse(status, result)
 }
 
@@ -55,13 +70,13 @@ func (s *Service) handleTasksAuto(req pluginapi.ManagementRequest) pluginapi.Man
 //
 // 一键完成要逐个账号串行跑，账号多时会超过管理请求的超时；同步执行的话
 // 请求被取消、账号只跑了一半。改成后台任务后由页面轮询 /tasks/auto_all/status。
+// 支持按 account_ids / vendor_ids / module_ids 隔离执行范围。
 func (s *Service) handleTasksAutoAll(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
-	// 空请求体 = 全部账号；勾选了账号时页面传 account_ids 限定范围。
-	body, errDecode := decodeRequest[accountBatchRequest](req.Body)
+	body, errDecode := decodeRequest[tasks.AutoAllOptions](req.Body)
 	if errDecode != nil {
 		return BadJSONRequestResponse()
 	}
-	payload, status := s.tasks.StartAutoAll(body.AccountIDs)
+	payload, status := s.tasks.StartAutoAllFiltered(body)
 	return JSONResponse(status, payload)
 }
 
@@ -73,5 +88,5 @@ func (s *Service) handleTasksAutoAllStatus(req pluginapi.ManagementRequest) plug
 func (s *Service) handleSchoolStatus(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
 	ctx, cancel := hostbridge.ManagementContext(req, requestTimeout)
 	defer cancel()
-	return JSONResponse(http.StatusOK, s.tasks.ActivityStatus(ctx, hostbridge.RequestCallbackID(req)))
+	return JSONResponse(http.StatusOK, s.tasks.ActivityStatus(ctx, hostbridge.RequestCallbackID(req), "school"))
 }

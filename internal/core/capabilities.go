@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // Meta 是供应商适配器的身份信息（组合进 adapter，替代旧的 BaseVendor）。

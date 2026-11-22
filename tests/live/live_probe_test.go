@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/vendors/minimaxcode"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/vendors/minimaxcode"
 )
 
 func liveCredential(t *testing.T) *minimaxcode.Credential {

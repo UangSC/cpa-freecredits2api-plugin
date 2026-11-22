@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // 签到链路的两条护栏：每日活跃信标本地区重、账号锁。

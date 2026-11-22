@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadConsoleAsset, loadConsoleHTML } from './_console.mjs';
 
-const html = readFileSync(new URL('../../internal/admin/console.html', import.meta.url), 'utf8');
-const loginCode = html.slice(html.indexOf('  var loginTimer = null;'), html.indexOf('  // 主「刷新」按钮执行 Token'));
+const html = loadConsoleHTML();
+const auth = loadConsoleAsset('auth.js');
+const loginCode = auth.slice(auth.indexOf('  var loginTimer = null;'));
 const vendor = {id:'tokenplan', name:'书生 Token Plan', auth_mode:'apikey', supports_login:false, quota_credential_hint:'为当前 Key 绑定墨点', quota_authorization:true};
 const flush = () => new Promise(resolve => setImmediate(resolve));
 

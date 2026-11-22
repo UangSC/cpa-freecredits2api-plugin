@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 func TestWireProfilePassesThroughBothHostTransports(t *testing.T) {

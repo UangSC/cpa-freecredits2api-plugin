@@ -7,13 +7,16 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/safe"
 )
 
 // Service 是一个 App 实例的任务引擎。
 type Service struct {
 	deps    Deps
 	catalog *Catalog
+	modules *core.TaskRegistry
 
 	schedulerMu     sync.Mutex
 	schedulerCancel context.CancelFunc
@@ -68,9 +71,11 @@ func (s *Service) trackJob(run func(ctx context.Context)) {
 
 // New 构造任务引擎。
 func New(deps Deps) *Service {
+	catalog := NewCatalog(deps.Registry())
+	catalog.enabledRealms = func() []string { return deps.Config().EnabledRealms }
 	return &Service{
 		deps:      deps,
-		catalog:   NewCatalog(deps.Registry()),
+		catalog:   catalog,
 		pokeCh:    make(chan string, 4),
 		taskLocks: map[string]chan struct{}{},
 		queue:     &queueState{},
@@ -80,6 +85,35 @@ func New(deps Deps) *Service {
 
 // Catalog 返回任务目录。
 func (s *Service) Catalog() *Catalog { return s.catalog }
+
+// SetModules 挂载可插拔任务扩展注册表，并同步到任务目录。
+func (s *Service) SetModules(reg *core.TaskRegistry) {
+	s.modules = reg
+	if s.catalog != nil {
+		s.catalog.SetModules(reg)
+	}
+}
+
+// Modules 返回当前挂载的任务扩展注册表（未挂载时为 nil）。
+func (s *Service) Modules() *core.TaskRegistry { return s.modules }
+
+// ModuleMetas 返回全部已挂载任务扩展模块的元数据快照。
+func (s *Service) ModuleMetas() []core.TaskModuleMeta {
+	metas := make([]core.TaskModuleMeta, 0)
+	for _, meta := range s.modules.Metas() {
+		ids := meta.VendorIDs[:0]
+		for _, vendorID := range meta.VendorIDs {
+			if s.catalog.vendorEnabled(vendorID) {
+				ids = append(ids, vendorID)
+			}
+		}
+		if len(ids) > 0 {
+			meta.VendorIDs = ids
+			metas = append(metas, meta)
+		}
+	}
+	return metas
+}
 
 // Start 启动后台调度循环（幂等）。
 func (s *Service) Start(ctx context.Context) {
@@ -146,7 +180,65 @@ func (s *Service) Status() map[string]any { return s.schedulerStatus() }
 // EffectiveSettings 返回页面设置与配置合并后的可读视图。
 func (s *Service) EffectiveSettings() map[string]any { return s.effectiveSettings() }
 
-// RunAsync 在后台执行一个任务族。
-func (s *Service) RunAsync(kind string) {
-	s.trackJob(func(ctx context.Context) { s.runScheduledTaskContext(ctx, kind) })
+// ManualRoute 是已注册任务的管理端触发入口。
+type ManualRoute struct {
+	Path        string
+	Description string
+	Kind        string
+	ModuleID    string
+}
+
+// ManualRoutes 返回各模块和存量任务族的触发入口。
+func (s *Service) ManualRoutes() []ManualRoute {
+	var routes []ManualRoute
+	seen := map[string]bool{}
+	for _, meta := range s.ModuleMetas() {
+		if meta.Manual && meta.Route != "" && !seen[meta.Route] {
+			routes = append(routes, ManualRoute{Path: meta.Route, Description: meta.Description, Kind: meta.Kind, ModuleID: meta.ID})
+			seen[meta.Route] = true
+		}
+	}
+	for _, spec := range s.catalog.ManualSpecs() {
+		if spec.Route != "" && !seen[spec.Route] {
+			routes = append(routes, ManualRoute{Path: spec.Route, Description: spec.Description, Kind: spec.Kind})
+			seen[spec.Route] = true
+		}
+	}
+	return routes
+}
+
+// RunManual 在后台执行指定任务模块或存量任务族。
+func (s *Service) RunManual(route ManualRoute) {
+	s.trackJob(func(ctx context.Context) {
+		if route.ModuleID == "" {
+			s.runScheduledTaskContext(ctx, route.Kind)
+			return
+		}
+		mod, found := s.modules.ByID(route.ModuleID)
+		if !found {
+			return
+		}
+		meta := mod.Meta()
+		s.forEachAccount(ctx, "", nil, func(ctx context.Context, account *accountContext) error {
+			if !meta.SupportsVendor(account.vendor.ID()) {
+				return nil
+			}
+			target := core.TaskModuleTarget{Vendor: account.vendor, Cred: account.credential}
+			if applicable, _ := mod.Applicable(target); !applicable {
+				return nil
+			}
+			results, skipped := s.runLockedAutoModules(ctx, account, []core.TaskModule{mod})
+			if skipped != "" {
+				logger.Info("%s %s: %s", meta.ID, account.label(), skipped)
+			}
+			for _, result := range results {
+				if result.Status == core.AutoStatusError {
+					logger.Error("%s %s: %s", meta.ID, account.label(), result.Message)
+				} else {
+					logger.Info("%s %s: %s", meta.ID, account.label(), result.Message)
+				}
+			}
+			return nil
+		})
+	})
 }

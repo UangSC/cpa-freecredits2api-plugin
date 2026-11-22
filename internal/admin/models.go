@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // consoleModel 是控制台页展示用的模型条目。
@@ -228,7 +228,13 @@ func (s *Service) modelToggleHandler(req pluginapi.ManagementRequest) pluginapi.
 	if len(targets) == 0 {
 		return JSONResponse(http.StatusBadRequest, map[string]any{"ok": false, "error": "请先选择要操作的模型"})
 	}
-	s.deps.Model().SetDisabled(targets, body.Disabled)
+	stored, errSave := s.deps.Model().SetDisabled(targets, body.Disabled)
+	if errSave != nil {
+		logger.Error("save disabled models failed: %v", errSave)
+		return JSONResponse(http.StatusInternalServerError, map[string]any{
+			"ok": false, "error": "模型状态写盘失败，原设置已保留，请检查状态目录权限和磁盘空间。",
+		})
+	}
 	verb := "启用"
 	if body.Disabled {
 		verb = "禁用"
@@ -236,7 +242,7 @@ func (s *Service) modelToggleHandler(req pluginapi.ManagementRequest) pluginapi.
 	logger.Info("models %s: %d 个（%s）", verb, len(targets), strings.Join(targets, ", "))
 	return JSONResponse(http.StatusOK, map[string]any{
 		"ok": true, "changed": len(targets), "disabled": body.Disabled,
-		"disabled_models": s.deps.State().DisabledModels,
+		"disabled_models": stored,
 		"message":         "已" + verb + " " + strconv.Itoa(len(targets)) + " 个模型（调用即时生效）",
 	})
 }

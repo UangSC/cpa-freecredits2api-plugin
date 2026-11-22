@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 func TestCallConvertsPanicToError(t *testing.T) {

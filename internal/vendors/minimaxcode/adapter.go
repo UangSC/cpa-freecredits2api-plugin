@@ -6,15 +6,15 @@ import (
 	"context"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // adapter 是 core.Vendor 在 MiniMax Code 上的实现（每个区域一个实例）。
 type adapter struct {
 	*core.NativeAdapter[*Credential]
 	region  Region
-	baseURL string
+	baseURL core.StringSetting
 	// workspace 是账号工作区模型目录缓存。挂在实例上而不是包级变量：
 	// 同进程的多个 App 实例各自独立，缓存生命周期跟着实例走。
 	workspace workspaceCache
@@ -61,7 +61,7 @@ func newInstance(env core.Env, region Region) core.Vendor {
 			}, native, nil
 		},
 		RefreshNative: func(ctx context.Context, native *Credential) (core.NativeRefresh[*Credential], error) {
-			updated, refreshed, errRefresh := RefreshCredential(ctx, native, inst.baseURL)
+			updated, refreshed, errRefresh := RefreshCredential(ctx, native, inst.baseURL.Load())
 			if errRefresh != nil {
 				return core.NativeRefresh[*Credential]{}, errRefresh
 			}
@@ -80,10 +80,10 @@ func newInstance(env core.Env, region Region) core.Vendor {
 // Configure 解析供应商专属配置。
 func (v *adapter) Configure(_ core.Settings, raw map[string]string) {
 	if v.region == RegionGlobal {
-		v.baseURL = strings.TrimSpace(raw["minimaxcode_global_base_url"])
+		v.baseURL.Store(strings.TrimSpace(raw["minimaxcode_global_base_url"]))
 		return
 	}
-	v.baseURL = strings.TrimSpace(raw["minimaxcode_cn_base_url"])
+	v.baseURL.Store(strings.TrimSpace(raw["minimaxcode_cn_base_url"]))
 }
 
 // Match 判断一份凭证是否属于本区域。
@@ -111,7 +111,7 @@ func (v *adapter) ModelsForAuth(ctx context.Context, cred *core.Credential) ([]p
 	if errNative != nil {
 		return static, nil
 	}
-	return mergeWorkspaceModels(static, v.workspace.models(ctx, native, v.baseURL)), nil
+	return mergeWorkspaceModels(static, v.workspace.models(ctx, native, v.baseURL.Load())), nil
 }
 
 // StaticModels 返回本区域的模型清单。
@@ -149,7 +149,7 @@ func (v *adapter) Execute(ctx context.Context, cred *core.Credential, req *core.
 	if errNative != nil {
 		return nil, errNative
 	}
-	payload, errChat := chat(ctx, native, req, v.baseURL, &v.workspace)
+	payload, errChat := chat(ctx, native, req, v.baseURL.Load(), &v.workspace)
 	if errChat != nil {
 		return nil, errChat
 	}
@@ -165,7 +165,7 @@ func (v *adapter) ExecuteStream(ctx context.Context, cred *core.Credential, req 
 	if errNative != nil {
 		return errNative
 	}
-	errStream := chatStream(ctx, native, req, v.baseURL, func(chunk []byte) error {
+	errStream := chatStream(ctx, native, req, v.baseURL.Load(), func(chunk []byte) error {
 		return sink.Emit(chunk)
 	}, &v.workspace)
 	if errStream != nil {
@@ -182,7 +182,7 @@ func (v *adapter) Quota(ctx context.Context, cred *core.Credential) (*pluginapi.
 	if errNative != nil {
 		return nil, errNative
 	}
-	return FetchQuota(ctx, native, v.baseURL)
+	return FetchQuota(ctx, native, v.baseURL.Load())
 }
 
 // Checkin 执行一次签到。
@@ -191,7 +191,7 @@ func (v *adapter) Checkin(ctx context.Context, cred *core.Credential) (*core.Che
 	if errNative != nil {
 		return nil, errNative
 	}
-	return Checkin(ctx, native, v.baseURL)
+	return Checkin(ctx, native, v.baseURL.Load())
 }
 
 // ---- 登录与续期 ----
@@ -203,7 +203,7 @@ func (v *adapter) LoginStart(ctx context.Context, _ map[string]any) (*pluginapi.
 
 // LoginPoll 轮询一次登录状态。
 func (v *adapter) LoginPoll(ctx context.Context, state string) (*pluginapi.AuthLoginPollResponse, error) {
-	return LoginPoll(ctx, v.Env.Logins, state, v.baseURL)
+	return LoginPoll(ctx, v.Env.Logins, state, v.baseURL.Load())
 }
 
 func (v *adapter) SupportsCheckin() bool { return v.region == RegionGlobal }

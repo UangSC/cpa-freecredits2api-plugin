@@ -3,7 +3,7 @@ package qoder
 import (
 	"testing"
 
-	"freetier2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/auth"
 )
 
 // TestOrderedQuotaFamiliesPutsUsableBucketFirst 锁定「页头数字由谁提供」。

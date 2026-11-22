@@ -14,16 +14,16 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // adapter 是 core.Vendor 在 Cline 上的实现。
 type adapter struct {
 	*core.NativeAdapter[*Credential]
-	baseURL string
+	baseURL core.StringSetting
 	// credits 是最近一次模型清单里的计费档（并发安全，见 core.CreditTable）。
 	credits core.CreditTable
 }
@@ -62,7 +62,7 @@ func Instances(env core.Env) []core.Vendor {
 			}, native, nil
 		},
 		RefreshNative: func(ctx context.Context, native *Credential) (core.NativeRefresh[*Credential], error) {
-			updated, refreshed, errRefresh := RefreshCredential(ctx, inst.baseURL, native)
+			updated, refreshed, errRefresh := RefreshCredential(ctx, inst.baseURL.Load(), native)
 			if errRefresh != nil {
 				return core.NativeRefresh[*Credential]{}, errRefresh
 			}
@@ -80,7 +80,7 @@ func Instances(env core.Env) []core.Vendor {
 
 // Configure 解析供应商专属配置。
 func (v *adapter) Configure(_ core.Settings, raw map[string]string) {
-	v.baseURL = strings.TrimSpace(raw["cline_base_url"])
+	v.baseURL.Store(strings.TrimSpace(raw["cline_base_url"]))
 }
 
 // Match 判断一份凭证是否属于本供应商。
@@ -92,7 +92,7 @@ func (v *adapter) Match(fileName, provider string, raw map[string]any) bool {
 
 // StaticModels 返回 Cline 的模型清单（上游接口无需认证）。
 func (v *adapter) StaticModels(ctx context.Context) ([]pluginapi.ModelInfo, error) {
-	models, errModels := FetchModels(ctx, v.baseURL)
+	models, errModels := FetchModels(ctx, v.baseURL.Load())
 	if errModels != nil {
 		// 探测失败退回内置兜底清单：没有模型注册比注册一份可能过时的
 		// 清单更糟（客户端会看不到任何模型）。
@@ -180,7 +180,7 @@ func (v *adapter) Execute(ctx context.Context, cred *core.Credential, req *core.
 	if errNative != nil {
 		return nil, errNative
 	}
-	payload, errChat := Chat(ctx, v.baseURL, ChatRequest{
+	payload, errChat := Chat(ctx, v.baseURL.Load(), ChatRequest{
 		BearerToken: native.BearerToken(),
 		Body:        req.Payload,
 		Stream:      false,
@@ -200,7 +200,7 @@ func (v *adapter) ExecuteStream(ctx context.Context, cred *core.Credential, req 
 	if errNative != nil {
 		return errNative
 	}
-	resp, errStream := ChatStream(ctx, v.baseURL, ChatRequest{
+	resp, errStream := ChatStream(ctx, v.baseURL.Load(), ChatRequest{
 		BearerToken: native.BearerToken(),
 		Body:        req.Payload,
 		Stream:      true,
@@ -260,7 +260,7 @@ func (v *adapter) LoginPoll(ctx context.Context, state string) (*pluginapi.AuthL
 			Message: "登录会话数据已损坏，请重新发起登录",
 		}, nil
 	}
-	credential, errPoll := LoginPoll(ctx, v.baseURL, pending.deviceCode)
+	credential, errPoll := LoginPoll(ctx, v.baseURL.Load(), pending.deviceCode)
 	if errPoll != nil {
 		return &pluginapi.AuthLoginPollResponse{
 			Status:  pluginapi.AuthLoginStatusError,

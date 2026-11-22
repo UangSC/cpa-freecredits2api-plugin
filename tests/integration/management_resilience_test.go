@@ -20,11 +20,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // traeQuotaFixture 是 Trae 额度接口的最小响应（product_type=2 为积分包）。
@@ -114,6 +115,54 @@ func TestConcurrentQuotaRequestsShareOneRun(t *testing.T) {
 	}
 }
 
+func TestConcurrentQuotaRequestsQueryPreviouslyUncoveredAccounts(t *testing.T) {
+	host := installFakeHost(t)
+	setupTestPlugin(t)
+	host.addAccount("1", "traecn-first.json", `{"vendor":"traecn","region":"cn","access_token":"first-test","uid":"2487573687317868"}`)
+	host.addAccount("2", "traecn-second.json", `{"vendor":"traecn","region":"cn","access_token":"second-test","uid":"2487573687317869"}`)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var first, unblock sync.Once
+	defer unblock.Do(func() { close(release) })
+	host.setUpstream(func(method, url, body string) fakeUpstreamResponse {
+		if !strings.Contains(url, "pay/ide_user_ent_usage") {
+			return fakeUpstreamResponse{Status: http.StatusNotFound, Body: `{"code":404}`}
+		}
+		first.Do(func() {
+			close(started)
+			<-release
+		})
+		return fakeUpstreamResponse{Status: http.StatusOK, Body: traeQuotaFixture}
+	})
+	complete := make(chan pluginapi.ManagementResponse, 2)
+	query := func(name string) {
+		complete <- managementCallWithBody(t, http.MethodPost, "/quotas", map[string]any{"account_ids": []string{name}})
+	}
+	go query("traecn-first.json")
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first account quota query did not reach upstream")
+	}
+	go query("traecn-second.json")
+	time.Sleep(50 * time.Millisecond)
+	unblock.Do(func() { close(release) })
+	for range 2 {
+		select {
+		case resp := <-complete:
+			var payload struct{ Results []struct{ OK bool } }
+			if err := json.Unmarshal(resp.Body, &payload); err != nil || len(payload.Results) != 1 || !payload.Results[0].OK {
+				t.Fatalf("expected each account to receive its own live quota, got %s (%v)", resp.Body, err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("quota request did not complete")
+		}
+	}
+	if calls := host.UpstreamCalls(); calls != 2 {
+		t.Fatalf("quota upstream calls = %d, want 2", calls)
+	}
+}
+
 // TestConsoleModelsProbeWhenCacheEmpty 验证控制台在缓存为空时补探测。
 //
 // 场景：插件刚重载，宿主还没跑 static 探测，但凭证已加载（active）。此时
@@ -195,12 +244,10 @@ func managementCallWithCancel(t *testing.T, method, path string) pluginapi.Manag
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	raw, errHandle := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
-		Method: method,
-		Path:   "/v0/management/plugins/freetier2api" + path,
-		Headers: http.Header{
-			"X-Host-Callback-Id": []string{testCallbackID},
-		},
-		Context: ctx,
+		Method:         method,
+		Path:           "/v0/management/plugins/freetier2api" + path,
+		HostCallbackID: testCallbackID,
+		Context:        ctx,
 	}))
 	if errHandle != nil {
 		t.Fatalf("%s %s: %v", method, path, errHandle)

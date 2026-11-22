@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/app"
 )
 
 // TestRegisterReturnsFullContract 验证注册响应满足宿主契约。
@@ -147,6 +147,24 @@ func TestAuthParseRecognizesOwnCredential(t *testing.T) {
 	}
 }
 
+func TestAuthParseRemovalMarkerReturnsNoRuntimeAccount(t *testing.T) {
+	installFakeHost(t)
+	setupTestPlugin(t)
+	for _, provider := range []string{app.ProviderKey, "codex"} {
+		result := callMethod(t, pluginabi.MethodAuthParse, pluginapi.AuthParseRequest{
+			Provider: provider, FileName: "account.json",
+			RawJSON: []byte(`{"type":"freetier","disabled":true,"_freetier2api_remove":true}`),
+		})
+		var response pluginapi.AuthParseResponse
+		if err := json.Unmarshal(result, &response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Handled != (provider == app.ProviderKey) || response.Auth.ID != "" || response.Auth.Provider != "" {
+			t.Fatalf("provider=%q: 删除标记返回意外凭证 %s", provider, result)
+		}
+	}
+}
+
 // TestAuthParsePutsRefreshTokenInMetadata 验证宿主刷新依赖的契约。
 //
 // 宿主判断「这个凭证能不能刷新」看的是 Metadata 里的 refresh_token。
@@ -180,11 +198,33 @@ func TestAuthParsePutsRefreshTokenInMetadata(t *testing.T) {
 	}
 }
 
+func TestManagementStatusUsesHostCallbackScope(t *testing.T) {
+	host := installFakeHost(t)
+	setupTestPlugin(t)
+	raw, err := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
+		Method:         http.MethodGet,
+		Path:           "/v0/management/plugins/freetier2api/status",
+		Headers:        http.Header{"X-Host-Callback-Id": {"client-supplied"}},
+		HostCallbackID: "cpa-issued",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env abiEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil || !env.OK {
+		t.Fatalf("management response = %s, %v", raw, err)
+	}
+	ids := host.CallbackIDs()
+	if len(ids) == 0 || ids[len(ids)-1] != "cpa-issued" {
+		t.Fatalf("management callbacks must use the CPA envelope scope, got %v", ids)
+	}
+}
+
 // TestBackgroundAutoAllIgnoresRequestCallbackScope 锁定后台一键完成运行在
 // 后台回调作用域（空回调 ID）。
 //
 // 宿主在 management.handle 返回时就关闭这次请求的回调 scope；后台任务若还
-// 带着 X-Host-Callback-Id 去调 host.auth.list / host.http.do，会被拒为
+// 带着本次请求的 host_callback_id 去调 host.auth.list / host.http.do，会被拒为
 // "host callback ID is not open"，表现成「一键完成刚启动就失败」。这个用例
 // 用假宿主记录每次回调携带的 ID 来锁住它（真实宿主不会容忍这种复用）。
 func TestBackgroundAutoAllIgnoresRequestCallbackScope(t *testing.T) {
@@ -193,9 +233,9 @@ func TestBackgroundAutoAllIgnoresRequestCallbackScope(t *testing.T) {
 
 	const requestCallbackID = "req-scope-1"
 	raw, err := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
-		Method:  "POST",
-		Path:    "/v0/management/plugins/freetier2api/tasks/auto_all",
-		Headers: http.Header{"X-Host-Callback-Id": {requestCallbackID}},
+		Method:         "POST",
+		Path:           "/v0/management/plugins/freetier2api/tasks/auto_all",
+		HostCallbackID: requestCallbackID,
 	}))
 	if err != nil {
 		t.Fatalf("handleMethod error: %v", err)

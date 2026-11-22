@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/internal/app"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/tests/testhost"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/tests/testhost"
 )
 
 func TestPluginABIFlow(t *testing.T) {

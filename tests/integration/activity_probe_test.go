@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/tests/testhost"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/tests/testhost"
 )
 
 // activitiesPreviewResponse 是 /activities/preview 的成功响应。
@@ -87,7 +87,7 @@ func previewActivities(t *testing.T, accountID string) activitiesPreviewResponse
 	t.Helper()
 	raw, err := testApp.HandleMethod(pluginabi.MethodManagementHandle, mustMarshal(pluginapi.ManagementRequest{
 		Method: "POST", Path: "/v0/management/plugins/freetier2api/activities/preview",
-		Headers: http.Header{"X-Host-Callback-Id": []string{testCallbackID}}, Body: []byte(`{"account_id":"` + accountID + `"}`),
+		HostCallbackID: testCallbackID, Body: []byte(`{"account_id":"` + accountID + `"}`),
 	}))
 	if err != nil {
 		t.Fatalf("handle: %v", err)

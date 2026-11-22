@@ -1,12 +1,14 @@
 package admin
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // MaxModelContextLength 限制手工输入的数量级，不代表上游支持该窗口。
@@ -44,17 +46,17 @@ func (c *Catalog) ContextLengthFor(vendorID, modelID string) int64 {
 	return 0
 }
 
-func (c *Catalog) SetContextLength(vendorID, modelID string, limit int64) {
+func (c *Catalog) SetContextLength(vendorID, modelID string, limit int64) error {
 	if _, fixed := c.fixedContextProvider(vendorID); fixed {
-		return
+		return nil
 	}
 	key := contextScopedKey(vendorID, modelID)
 	if c.store == nil {
-		return
+		return fmt.Errorf("model state store is unavailable")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.store.Mutate(func(s *state.State) {
+	if errSave := c.store.MutateAndSave(func(s *state.State) {
 		if s.ModelContexts == nil {
 			s.ModelContexts = map[string]int64{}
 		}
@@ -64,12 +66,15 @@ func (c *Catalog) SetContextLength(vendorID, modelID string, limit int64) {
 			s.ModelContexts[key] = limit
 		}
 		s.RestartPending = true
-	})
+	}); errSave != nil {
+		return errSave
+	}
 	if limit == 0 {
 		delete(c.contexts, key)
 	} else {
 		c.contexts[key] = limit
 	}
+	return nil
 }
 
 func (c *Catalog) fixedContextProvider(vendorID string) (core.FixedModelContextProvider, bool) {
@@ -106,7 +111,12 @@ func (s *Service) modelContextHandler(req pluginapi.ManagementRequest) pluginapi
 			"ok": false, "error": "context_length 必须是 0 到 100000000 之间的整数，0 表示恢复自动值",
 		})
 	}
-	s.deps.Model().SetContextLength(vendorID, modelID, *decoded.ContextLength)
+	if errSave := s.deps.Model().SetContextLength(vendorID, modelID, *decoded.ContextLength); errSave != nil {
+		logger.Error("save model context for %s:%s failed: %v", vendorID, modelID, errSave)
+		return JSONResponse(http.StatusInternalServerError, map[string]any{
+			"ok": false, "error": "模型上下文写盘失败，原设置已保留，请检查状态目录权限和磁盘空间。",
+		})
+	}
 	return JSONResponse(http.StatusOK, map[string]any{
 		"ok": true, "context_override": *decoded.ContextLength,
 		"context_length": s.deps.Model().ContextLengthFor(vendorID, modelID),

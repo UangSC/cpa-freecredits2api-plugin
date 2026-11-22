@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 const secretPrompt = "请帮我写一封辞职信，收件人是张三，理由是薪资太低。SECRET-TOKEN-123"

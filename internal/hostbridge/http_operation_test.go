@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
 )
 
 func TestHTTPClientTimeoutCancelsHostOperation(t *testing.T) {

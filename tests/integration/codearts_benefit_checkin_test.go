@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"freetier2api-plugin/internal/vendors/codearts"
+	"cpa-tierbridge2api-plugin/internal/vendors/codearts"
 )
 
 // 验证管理页复用的 /checkin 端点真正领取福利，并把完整结果写回历史。

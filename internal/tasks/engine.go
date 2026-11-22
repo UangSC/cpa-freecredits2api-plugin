@@ -9,17 +9,18 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
-	"freetier2api-plugin/internal/safe"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // 调度循环参数。
@@ -150,7 +151,7 @@ func (s *Service) runScheduledTaskContext(ctx context.Context, kind string) {
 		s.runCheckinAll(ctx)
 		return
 	}
-	s.runScheduledFamily(ctx, kind)
+	s.runScheduledFamily(ctx, kind, false)
 }
 
 // schedulerStatus 返回调度器状态（供管理页展示）。
@@ -216,6 +217,21 @@ func (s *Service) effectiveSettings() map[string]any {
 //
 // targets 为空表示全部账号；非空时只遍历命中的那些（管理端的批量勾选）。
 func (s *Service) forEachAccount(ctx context.Context, callbackID string, targets []string, fn func(context.Context, *accountContext) error) {
+	for _, account := range s.collectAccounts(ctx, callbackID, targets) {
+		if ctx.Err() != nil {
+			return
+		}
+		if errRun := fn(ctx, account); errRun != nil {
+			logger.Debug("account %s task failed: %v", account.label(), errRun)
+		}
+		if !core.SleepContext(ctx, accountGap) {
+			return
+		}
+	}
+}
+
+// collectAccounts 只加载账号。执行动作的间隔由调用方控制。
+func (s *Service) collectAccounts(ctx context.Context, callbackID string, targets []string) []*accountContext {
 	cfg := s.deps.Config()
 	accounts, failures := s.deps.Pool().Load(ctx, callbackID, auth.Options{
 		Targets:       targets,
@@ -224,14 +240,11 @@ func (s *Service) forEachAccount(ctx context.Context, callbackID string, targets
 	for _, failure := range failures {
 		logger.Debug("skip account %s: %s", core.FirstNonEmpty(failure.Entry.Name, failure.Entry.ID), failure.Message)
 	}
+	loaded := make([]*accountContext, 0, len(accounts))
 	for _, account := range accounts {
-		if errRun := fn(ctx, newAccountContext(account)); errRun != nil {
-			logger.Debug("account %s task failed: %v", core.FirstNonEmpty(account.Entry.Label, account.Entry.Name), errRun)
-		}
-		if !core.SleepContext(ctx, accountGap) {
-			return
-		}
+		loaded = append(loaded, newAccountContext(account))
 	}
+	return loaded
 }
 
 // accountContext 是遍历中单个账号的上下文。
@@ -301,7 +314,7 @@ func (s *Service) runCheckinAll(ctx context.Context) {
 	if s.effectiveAutoTasks() {
 		for _, spec := range s.catalog.Specs() {
 			if spec.AfterCheckin {
-				s.runScheduledFamily(ctx, spec.Kind)
+				s.runScheduledFamily(ctx, spec.Kind, true)
 			}
 		}
 	}
@@ -312,7 +325,7 @@ func (s *Service) runCheckinAll(ctx context.Context) {
 // keepalive 是唯一的例外：它不需要供应商写代码，只需实现 core.Refresher
 // 刷新 token，写回由引擎统一做（见 keepalive.go）。这样「合并 → 写宿主 →
 // 落盘」只有一份实现，供应商包也不必依赖 internal/hostbridge。
-func (s *Service) runScheduledFamily(ctx context.Context, kind string) {
+func (s *Service) runScheduledFamily(ctx context.Context, kind string, afterCheckin bool) {
 	logger.Info("%s: starting for all accounts", kind)
 	done, idle, failed := 0, 0, 0
 	s.forEachAccount(ctx, "", nil, func(ctx context.Context, account *accountContext) error {
@@ -327,7 +340,7 @@ func (s *Service) runScheduledFamily(ctx context.Context, kind string) {
 			done++
 			return nil
 		}
-		message, errRun := s.runScheduledForAccount(ctx, account, kind)
+		message, errRun := s.runScheduledForAccount(ctx, account, kind, afterCheckin)
 		switch {
 		case errRun != nil:
 			logger.Error("%s %s: %v", kind, account.label(), errRun)
@@ -358,12 +371,51 @@ func (s *Service) runScheduledFamily(ctx context.Context, kind string) {
 //
 // 返回值区分三态：message 非空 = 真做了事；message 空且 err 为 nil = 无事可做；
 // err 非空 = 失败。供应商不许把失败折成空字符串，那样上层只能瞎猜。
-func (s *Service) runScheduledForAccount(ctx context.Context, account *accountContext, kind string) (string, error) {
+func (s *Service) runScheduledForAccount(ctx context.Context, account *accountContext, kind string, afterCheckin bool) (string, error) {
+	if errLock := s.lockAccount(ctx, account.uid()); errLock != nil {
+		return "", errLock
+	}
+	defer s.unlockAccount(account.uid())
+	if s.modules != nil {
+		mods := s.modules.ForVendorKind(account.vendor.ID(), kind)
+		target := core.TaskModuleTarget{Vendor: account.vendor, Cred: account.credential}
+		handled := false
+		var messages []string
+		var errs []error
+		for _, mod := range mods {
+			scheduled, okScheduled := mod.(core.ScheduledTaskModule)
+			if !okScheduled {
+				continue
+			}
+			handled = true
+			if afterCheckin && !mod.Meta().AfterCheckin {
+				continue
+			}
+			if ok, _ := mod.Applicable(target); !ok {
+				continue
+			}
+			msg, errRun := scheduled.RunScheduled(ctx, target)
+			if errRun != nil {
+				errs = append(errs, errRun)
+			} else if strings.TrimSpace(msg) != "" {
+				messages = append(messages, msg)
+			}
+		}
+		if handled {
+			return strings.Join(messages, "；"), errors.Join(errs...)
+		}
+	}
 	runner, okRunner := core.As[core.ScheduledRunner](account.vendor)
-	if !okRunner || !core.SupportsScheduledKind(account.vendor, kind) {
+	provider, okProvider := core.As[core.TaskCatalogProvider](account.vendor)
+	if !okRunner || !okProvider {
 		return "", nil
 	}
-	return runner.RunScheduled(ctx, account.credential, kind)
+	for _, spec := range provider.TaskSpecs() {
+		if spec.Kind == kind && (!afterCheckin || spec.AfterCheckin) {
+			return runner.RunScheduled(ctx, account.credential, kind)
+		}
+	}
+	return "", nil
 }
 
 const (
@@ -444,13 +496,14 @@ type taskItem = core.TaskItem
 type accountScan struct {
 	UID      string     `json:"uid"`
 	Label    string     `json:"label"`
+	VendorID string     `json:"vendor_id,omitempty"`
 	Realm    string     `json:"realm"`
 	Tasks    []taskItem `json:"-"`
 	InPeriod bool       `json:"in_period"`
 	Error    string     `json:"error,omitempty"`
 }
 
-// MarshalJSON 保留旧的 growth/school 响应字段，内部统一使用 Tasks。
+// MarshalJSON 保留旧的 growth/school 响应字段，同时暴露通用的 tasks 列表供模块化任务页使用。
 func (s accountScan) MarshalJSON() ([]byte, error) {
 	var growth, school []taskItem
 	for _, task := range s.Tasks {
@@ -464,36 +517,111 @@ func (s accountScan) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		UID      string     `json:"uid"`
 		Label    string     `json:"label"`
+		VendorID string     `json:"vendor_id,omitempty"`
 		Realm    string     `json:"realm"`
+		Tasks    []taskItem `json:"tasks,omitempty"`
 		Growth   []taskItem `json:"growth"`
 		School   []taskItem `json:"school"`
 		InPeriod bool       `json:"in_period"`
 		Error    string     `json:"error,omitempty"`
-	}{s.UID, s.Label, s.Realm, growth, school, s.InPeriod, s.Error})
+	}{s.UID, s.Label, s.VendorID, s.Realm, s.Tasks, growth, school, s.InPeriod, s.Error})
 }
 
-// scanAllAccounts 并发扫描每个账号的待办任务。
-func (s *Service) scanAllAccounts(ctx context.Context, callbackID string) []accountScan {
+// scanAccounts 按渠道和模块筛选后并发扫描。
+func (s *Service) scanAccounts(ctx context.Context, callbackID string, vendors, modules map[string]bool) []accountScan {
 	loaded := s.collectAccounts(ctx, callbackID, nil)
-	scans := auth.RunBatch(loaded, queueMaxConcurrency, func(account *accountContext) (scan accountScan) {
+	type scanTarget struct {
+		account *accountContext
+		modules []core.TaskModule
+	}
+	targets := make([]scanTarget, 0, len(loaded))
+	for _, account := range loaded {
+		if len(vendors) > 0 && !vendors[account.vendor.ID()] {
+			continue
+		}
+		mods := s.scannableModules(account, modules)
+		if s.modules != nil {
+			if len(mods) == 0 {
+				continue
+			}
+		} else if _, ok := core.As[core.TaskInspector](account.vendor); !ok || len(modules) > 0 {
+			continue
+		}
+		targets = append(targets, scanTarget{account: account, modules: mods})
+	}
+	scans := auth.RunBatch(targets, queueMaxConcurrency, func(target scanTarget) (scan accountScan) {
+		account := target.account
 		defer func() {
 			if r := recover(); r != nil {
-				scan = accountScan{UID: account.uid(), Label: account.label(),
-					Error: safe.NewPanicError("task scan "+account.label(), r).Error()}
+				scan = accountScan{
+					UID:      account.uid(),
+					Label:    account.label(),
+					VendorID: account.vendor.ID(),
+					Realm:    account.vendor.Region(),
+					Error:    safe.NewPanicError("task scan "+account.label(), r).Error(),
+				}
 			}
 		}()
-		return s.scanOneAccount(ctx, account)
+		return s.scanOneAccount(ctx, account, target.modules)
 	})
 	sort.Slice(scans, func(i, j int) bool { return scans[i].Label < scans[j].Label })
 	return scans
 }
 
+func (s *Service) scannableModules(account *accountContext, filter map[string]bool) []core.TaskModule {
+	if s.modules == nil || account == nil || account.vendor == nil {
+		return nil
+	}
+	applicable := s.modules.ApplicableModules(account.vendor, account.credential)
+	out := make([]core.TaskModule, 0, len(applicable))
+	for _, mod := range applicable {
+		if len(filter) > 0 && !filter[mod.Meta().ID] {
+			continue
+		}
+		if _, ok := mod.(core.ScannableTaskModule); ok {
+			out = append(out, mod)
+		}
+	}
+	return out
+}
+
 // scanOneAccount 扫描单个账号。
-func (s *Service) scanOneAccount(ctx context.Context, account *accountContext) accountScan {
+func (s *Service) scanOneAccount(ctx context.Context, account *accountContext, mods []core.TaskModule) accountScan {
 	scan := accountScan{
-		UID:   account.uid(),
-		Label: account.label(),
-		Realm: account.vendor.Region(),
+		UID:      account.uid(),
+		Label:    account.label(),
+		VendorID: account.vendor.ID(),
+		Realm:    account.vendor.Region(),
+	}
+	if s.modules != nil {
+		target := core.TaskModuleTarget{Vendor: account.vendor, Cred: account.credential}
+		var errs []string
+		for _, mod := range mods {
+			scannable := mod.(core.ScannableTaskModule)
+			meta := mod.Meta()
+			inspection, errInspect := scannable.Inspect(ctx, target)
+			if errInspect != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", core.FirstNonEmpty(meta.Name, meta.ID), errInspect))
+				continue
+			}
+			if inspection.InPeriod {
+				scan.InPeriod = true
+			}
+			for _, item := range inspection.Items {
+				item.ModuleID = meta.ID
+				if item.Kind == "" {
+					item.Kind = meta.Kind
+				}
+				if item.KindLabel == "" {
+					item.KindLabel = core.FirstNonEmpty(meta.Name, item.Kind)
+				}
+				scan.Tasks = append(scan.Tasks, item)
+			}
+		}
+		if len(errs) > 0 {
+			scan.Error = strings.Join(errs, "；")
+		}
+		return scan
 	}
 	inspector, okInspector := core.As[core.TaskInspector](account.vendor)
 	if !okInspector {
@@ -514,6 +642,8 @@ func (s *Service) scanOneAccount(ctx context.Context, account *accountContext) a
 type queueItem struct {
 	UID      string `json:"uid"`
 	Label    string `json:"label"`
+	VendorID string `json:"vendor_id,omitempty"`
+	ModuleID string `json:"module_id,omitempty"`
 	Kind     string `json:"kind"`
 	Code     string `json:"code"`
 	Status   string `json:"status"`
@@ -525,6 +655,7 @@ type queueItem struct {
 
 type queueState struct {
 	mu        sync.Mutex
+	preparing bool
 	running   bool
 	startedAt time.Time
 	seq       int64
@@ -546,12 +677,13 @@ func (s *Service) taskQueueSnapshot() map[string]any {
 		}
 	}
 	snapshot := map[string]any{
-		"running": s.queue.running,
-		"seq":     s.queue.seq,
-		"conc":    s.queue.conc,
-		"total":   len(items),
-		"done":    done,
-		"items":   items,
+		"preparing": s.queue.preparing,
+		"running":   s.queue.running,
+		"seq":       s.queue.seq,
+		"conc":      s.queue.conc,
+		"total":     len(items),
+		"done":      done,
+		"items":     items,
 	}
 	if !s.queue.startedAt.IsZero() {
 		snapshot["started_at"] = s.queue.startedAt.Format(time.RFC3339)
@@ -562,20 +694,27 @@ func (s *Service) taskQueueSnapshot() map[string]any {
 // buildQueueItems 把扫描结果摊平成队列项（账号内按依赖序排列）。
 //
 // selected 为空表示执行扫描到的全部任务族；非空时只保留其中列出的 kind。
-// 这里不认识任何供应商专属任务族，筛选语义完全由调用方（管理接口的兼容投影）决定。
+// 这里不认识任何供应商专属任务族，筛选语义完全由调用方决定。
 func (s *Service) buildQueueItems(scans []accountScan, selected map[string]bool) []queueItem {
+	return s.buildQueueItemsFiltered(scans, selected, nil)
+}
+
+func (s *Service) buildQueueItemsFiltered(scans []accountScan, selectedKinds, selectedModules map[string]bool) []queueItem {
 	items := make([]queueItem, 0, 64)
 	seenRun := make(map[string]bool)
 	for _, scan := range scans {
 		for _, task := range scan.Tasks {
-			if len(selected) > 0 && !selected[task.Kind] {
+			if len(selectedKinds) > 0 && !selectedKinds[task.Kind] {
+				continue
+			}
+			if len(selectedModules) > 0 && !selectedModules[task.ModuleID] {
 				continue
 			}
 			code := task.Code
 			if task.RunCode != "" {
-				// 聚合任务（例如开学季活动）只入队一次，并以 RunCode 执行。
+				// 聚合任务（例如活动/福利任务）只入队一次，并以 RunCode 执行。
 				code = task.RunCode
-				key := scan.UID + "\x00" + code
+				key := scan.UID + "\x00" + task.ModuleID + "\x00" + code
 				if seenRun[key] {
 					continue
 				}
@@ -586,7 +725,8 @@ func (s *Service) buildQueueItems(scans []accountScan, selected map[string]bool)
 				progress = fmt.Sprintf("%d/%d", task.Current, task.Target)
 			}
 			items = append(items, queueItem{
-				UID: scan.UID, Label: scan.Label, Kind: task.Kind,
+				UID: scan.UID, Label: scan.Label, VendorID: scan.VendorID,
+				ModuleID: task.ModuleID, Kind: task.Kind,
 				Code: code, Status: "pending", Progress: progress,
 			})
 		}
@@ -595,19 +735,29 @@ func (s *Service) buildQueueItems(scans []accountScan, selected map[string]bool)
 }
 
 // runQueueItems 执行队列：账号内串行、账号间并发。
-func (s *Service) runQueueItems(callbackID string, concurrency int, seq int64) {
+func (s *Service) runQueueItems(ctx context.Context, concurrency int, seq int64) {
 	defer func() {
+		failureMessage := "队列已中断"
+		if recovered := recover(); recovered != nil {
+			failureMessage = safe.NewPanicError("task queue", recovered).Error()
+		}
 		s.queue.mu.Lock()
 		if s.queue.seq == seq {
+			for index, item := range s.queue.items {
+				if item.Status == "pending" || item.Status == "running" {
+					s.queue.items[index].Status = core.AutoStatusError
+					s.queue.items[index].Message = failureMessage
+				}
+			}
 			s.queue.running = false
 		}
 		s.queue.mu.Unlock()
 	}()
-	// 先于上面的收尾执行：恢复 panic 后 running 照常复位，队列不会永远卡在「执行中」。
-	defer safe.Recover("task queue")
-
-	ctx := context.Background()
-	loaded := s.collectAccounts(ctx, callbackID, nil)
+	if ctx.Err() != nil {
+		return
+	}
+	// 管理请求已结束，后台必须使用宿主的后台回调作用域。
+	loaded := s.collectAccounts(ctx, "", nil)
 	byUID := make(map[string]*accountContext, len(loaded))
 	for _, account := range loaded {
 		byUID[account.uid()] = account
@@ -663,17 +813,40 @@ func (s *Service) runQueueJob(ctx context.Context, job queueJob) {
 	}
 	defer s.unlockAccount(target.uid())
 
-	if preparer, okPreparer := core.As[core.TaskPreparer](target.vendor); okPreparer {
+	if s.modules != nil {
+		targetCtx := core.TaskModuleTarget{Vendor: target.vendor, Cred: target.credential}
+		selected := make(map[string]bool, len(job.indices))
+		for _, index := range job.indices {
+			selected[s.queueItemAt(index).ModuleID] = true
+		}
+		prepared := 0
+		for _, mod := range s.modules.ApplicableModules(target.vendor, target.credential) {
+			if !selected[mod.Meta().ID] || ctx.Err() != nil {
+				continue
+			}
+			if preparer, okPreparer := mod.(core.PreparableTaskModule); okPreparer {
+				prepared += preparer.Prepare(ctx, targetCtx)
+			}
+		}
+		if prepared > 0 {
+			logger.Debug("queue: accepted %d task(s) for %s", prepared, target.label())
+			core.SleepContext(ctx, 1050*time.Millisecond)
+		}
+	} else if preparer, okPreparer := core.As[core.TaskPreparer](target.vendor); okPreparer {
 		if accepted := preparer.PrepareTasks(ctx, target.credential); accepted > 0 {
 			logger.Debug("queue: accepted %d task(s) for %s", accepted, target.label())
 			core.SleepContext(ctx, 1050*time.Millisecond)
 		}
 	}
 	for position, index := range job.indices {
+		if ctx.Err() != nil {
+			s.markQueueItems(job.indices[position:], "skipped", "队列已中断", 0, 0)
+			return
+		}
 		unfinished = job.indices[position:]
 		item := s.queueItemAt(index)
 		s.markQueueItem(index, "running", "")
-		result, errRun := s.runTaskForAccount(ctx, target, item.Code)
+		result, errRun := s.runTaskForAccountWithModule(ctx, target, item.Code, item.ModuleID)
 		if errRun != nil {
 			s.markQueueItem(index, "error", errRun.Error())
 		} else {
@@ -684,8 +857,51 @@ func (s *Service) runQueueJob(ctx context.Context, job queueJob) {
 	}
 }
 
-// runTaskForAccount 调用供应商的任务执行能力并记录结果。
+// runTaskForAccount 调用任务模块或供应商的任务执行能力并记录结果。
 func (s *Service) runTaskForAccount(ctx context.Context, account *accountContext, code string) (core.TaskRunResult, error) {
+	return s.runTaskForAccountWithModule(ctx, account, code, "")
+}
+
+func (s *Service) runTaskForAccountWithModule(ctx context.Context, account *accountContext, code, moduleID string) (core.TaskRunResult, error) {
+	moduleID = strings.TrimSpace(moduleID)
+	if s.modules != nil {
+		target := core.TaskModuleTarget{Vendor: account.vendor, Cred: account.credential}
+		var mod core.TaskModule
+		if moduleID != "" {
+			found, ok := s.modules.ByID(moduleID)
+			if !ok {
+				return core.TaskRunResult{}, fmt.Errorf("任务模块 %q 不存在", moduleID)
+			}
+			if !found.Meta().SupportsVendor(account.vendor.ID()) {
+				return core.TaskRunResult{Status: core.AutoStatusSkipped, Message: "该渠道不支持此任务模块"}, nil
+			}
+			if okApp, reason := found.Applicable(target); !okApp {
+				return core.TaskRunResult{Status: core.AutoStatusSkipped, Message: core.FirstNonEmpty(reason, "该账号不适用此任务模块")}, nil
+			}
+			mod = found
+		} else {
+			applicable := s.modules.ApplicableModules(account.vendor, account.credential)
+			switch len(applicable) {
+			case 0:
+				return core.TaskRunResult{Status: core.AutoStatusSkipped, Message: "该账号没有适用的任务模块"}, nil
+			case 1:
+				mod = applicable[0]
+			default:
+				return core.TaskRunResult{}, fmt.Errorf("该账号有多个任务模块，请指定 module_id")
+			}
+		}
+		raw, errRun := mod.Run(ctx, target, code)
+		if errRun != nil {
+			s.recordTaskResult(account.uid(), code, errRun.Error(), core.AutoStatusError, 0, 0)
+			return core.TaskRunResult{}, errRun
+		}
+		result := collapseModuleRunResult(raw)
+		s.recordTaskResult(account.uid(), code, result.Message, result.Status, result.Credit, result.Energy)
+		return result, nil
+	}
+	if moduleID != "" {
+		return core.TaskRunResult{}, fmt.Errorf("任务模块 %q 不存在", moduleID)
+	}
 	runner, okRunner := core.As[core.TaskRunner](account.vendor)
 	if !okRunner {
 		return core.TaskRunResult{}, fmt.Errorf("该供应商不支持任务执行")
@@ -697,6 +913,44 @@ func (s *Service) runTaskForAccount(ctx context.Context, account *accountContext
 	}
 	s.recordTaskResult(account.uid(), code, result.Message, result.Status, result.Credit, result.Energy)
 	return result, nil
+}
+
+func collapseModuleRunResult(raw []core.AutoTaskResult) core.TaskRunResult {
+	if len(raw) == 0 {
+		return core.TaskRunResult{Status: core.AutoStatusSkipped, Message: "无可执行子任务"}
+	}
+	if len(raw) == 1 {
+		return core.TaskRunResult{
+			Status:  core.FirstNonEmpty(raw[0].Status, core.AutoStatusDone),
+			Message: raw[0].Message,
+			Credit:  raw[0].Credit,
+			Energy:  raw[0].Energy,
+		}
+	}
+	var messages []string
+	var credit, energy int64
+	status := core.AutoStatusSkipped
+	for _, item := range raw {
+		credit += item.Credit
+		energy += item.Energy
+		if strings.TrimSpace(item.Message) != "" {
+			messages = append(messages, item.Message)
+		}
+		switch item.Status {
+		case core.AutoStatusError:
+			status = core.AutoStatusError
+		case core.AutoStatusDone:
+			if status != core.AutoStatusError {
+				status = core.AutoStatusDone
+			}
+		}
+	}
+	return core.TaskRunResult{
+		Status:  status,
+		Message: strings.Join(messages, "；"),
+		Credit:  credit,
+		Energy:  energy,
+	}
 }
 
 // 队列状态访问器（避免在 goroutine 里长时间持锁）。
@@ -750,7 +1004,7 @@ func (s *Service) markQueueItems(indices []int, status, message string, credit, 
 
 // recordTaskResult 记录任务执行结果到状态文件。
 func (s *Service) recordTaskResult(uid, code, message, status string, credit, energy int64) {
-	if strings.TrimSpace(uid) == "" {
+	if strings.TrimSpace(uid) == "" || s.deps == nil {
 		return
 	}
 	key := taskStateKey(uid, code)
@@ -766,6 +1020,7 @@ func (s *Service) recordTaskResult(uid, code, message, status string, credit, en
 }
 
 type autoAllResult struct {
+	ModuleID string `json:"module_id,omitempty"`
 	Code     string `json:"task_code"`
 	Status   string `json:"status"`
 	Message  string `json:"message,omitempty"`
@@ -774,8 +1029,75 @@ type autoAllResult struct {
 	Progress string `json:"progress,omitempty"`
 }
 
-// runAutoAll 调用供应商的一键完成，并记录每条结果。
+func (s *Service) matchingAutoModules(account *accountContext, moduleFilter map[string]bool) []core.TaskModule {
+	if s.modules == nil || account == nil || account.vendor == nil {
+		return nil
+	}
+	applicable := s.modules.ApplicableModules(account.vendor, account.credential)
+	out := make([]core.TaskModule, 0, len(applicable))
+	for _, mod := range applicable {
+		meta := mod.Meta()
+		// 显式指定 module_ids 时允许触发该模块（即使 AutoEligible==false）；
+		// 未指定时只纳入参与「一键做任务」的模块。
+		if len(moduleFilter) > 0 {
+			if !moduleFilter[meta.ID] {
+				continue
+			}
+		} else if !meta.AutoEligible {
+			continue
+		}
+		out = append(out, mod)
+	}
+	return out
+}
+
+func (s *Service) runAutoModules(ctx context.Context, account *accountContext, mods []core.TaskModule) []autoAllResult {
+	if len(mods) == 0 {
+		return nil
+	}
+	target := core.TaskModuleTarget{Vendor: account.vendor, Cred: account.credential}
+	results := make([]autoAllResult, 0, len(mods)*2)
+	for _, mod := range mods {
+		if ctx.Err() != nil {
+			break
+		}
+		meta := mod.Meta()
+		raw, errRun := mod.Run(ctx, target, "")
+		if errRun != nil {
+			code := core.FirstNonEmpty(meta.Kind, meta.ID)
+			results = append(results, autoAllResult{
+				ModuleID: meta.ID,
+				Code:     code,
+				Status:   core.AutoStatusError,
+				Message:  errRun.Error(),
+			})
+			s.recordTaskResult(account.uid(), code, errRun.Error(), core.AutoStatusError, 0, 0)
+			continue
+		}
+		for _, item := range raw {
+			result := autoAllResult{
+				ModuleID: meta.ID,
+				Code:     item.Code,
+				Status:   item.Status,
+				Message:  item.Message,
+				Credit:   item.Credit,
+				Energy:   item.Energy,
+				Progress: item.Progress,
+			}
+			if !strings.HasPrefix(item.Code, "(") {
+				s.recordTaskResult(account.uid(), item.Code, item.Message, item.Status, item.Credit, item.Energy)
+			}
+			results = append(results, result)
+		}
+	}
+	return results
+}
+
+// runAutoAll 调用已挂载的任务模块（或旧供应商的一键完成），并记录每条结果。
 func (s *Service) runAutoAll(ctx context.Context, account *accountContext) []autoAllResult {
+	if s.modules != nil {
+		return s.runAutoModules(ctx, account, s.matchingAutoModules(account, nil))
+	}
 	runner, okRunner := core.As[core.TaskRunner](account.vendor)
 	if !okRunner {
 		return nil
@@ -793,16 +1115,6 @@ func (s *Service) runAutoAll(ctx context.Context, account *accountContext) []aut
 		results = append(results, result)
 	}
 	return results
-}
-
-// collectAccounts 收集本插件名下的可用账号；targets 为空表示全部。
-func (s *Service) collectAccounts(ctx context.Context, callbackID string, targets []string) []*accountContext {
-	accounts := make([]*accountContext, 0, 8)
-	s.forEachAccount(ctx, callbackID, targets, func(_ context.Context, account *accountContext) error {
-		accounts = append(accounts, account)
-		return nil
-	})
-	return accounts
 }
 
 // findAccount 按标识查找账号（支持 auth_id / uid / auth_index）。
@@ -842,8 +1154,13 @@ func pickAccount(candidates []*accountContext, identifier string) *accountContex
 }
 
 // activityStatusForAccounts 返回各账号的活动任务状态（供管理页展示）。
-func (s *Service) activityStatusForAccounts(ctx context.Context, callbackID string) []map[string]any {
-	loaded := s.collectAccounts(ctx, callbackID, nil)
+func (s *Service) activityStatusForAccounts(ctx context.Context, callbackID, kind string) []map[string]any {
+	var loaded []*accountContext
+	for _, account := range s.collectAccounts(ctx, callbackID, nil) {
+		if core.SupportsScheduledKind(account.vendor, kind) {
+			loaded = append(loaded, account)
+		}
+	}
 	out := auth.RunBatch(loaded, queueMaxConcurrency, func(target *accountContext) (result map[string]any) {
 		defer func() {
 			if r := recover(); r != nil {

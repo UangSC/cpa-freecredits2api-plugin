@@ -2,7 +2,7 @@ package tokenplan
 
 import (
 	"context"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // AuthMode 声明控制台使用完整 API Key 输入，不提供 OAuth 登录流程。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把旧凭证文件迁移到 FreeTier 2API 的命名与字段约定。
+"""把旧凭证文件迁移到 TierBridge 2API 的命名与字段约定。
 
 做三件事（每个文件）：
   1. type 改为 freetier（所有供应商共用一个 provider key）；

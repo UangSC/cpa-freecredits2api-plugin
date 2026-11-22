@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge/hostbridgetest"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge/hostbridgetest"
 )
 
 func TestNormalizePhone(t *testing.T) {
@@ -193,7 +193,7 @@ func TestLoginStartRequiresCaptcha(t *testing.T) {
 	instances := Instances(envWithLogins())
 	oauth := instances[1].(*oauthLoginAdapter)
 	// 请求地址不可达也没关系：缺验证码必须在发请求之前就被挡下。
-	oauth.baseURL = "http://127.0.0.1:1"
+	oauth.baseURL.Store("http://127.0.0.1:1")
 	_, errStart := oauth.LoginStart(testContext(), map[string]any{"oauth_variant": "google"})
 	if errStart == nil || !strings.Contains(errStart.Error(), "人机验证") {
 		t.Fatalf("err = %v, want 人机验证提示", errStart)
@@ -215,7 +215,7 @@ func TestLoginStartRequestsOAuthURLAndRegistersSession(t *testing.T) {
 
 	instances := Instances(envWithLogins())
 	oauth := instances[1].(*oauthLoginAdapter)
-	oauth.baseURL = server.URL
+	oauth.baseURL.Store(server.URL)
 	response, errStart := oauth.LoginStart(testContext(), map[string]any{
 		"oauth_variant":            "zai",
 		"ali_captcha_verify_param": "captcha-token-1",
@@ -319,7 +319,7 @@ func TestSubmitCallbackExchangesCodeWithSessionNavigateURI(t *testing.T) {
 
 	instances := Instances(envWithLogins())
 	oauth := instances[1].(*oauthLoginAdapter)
-	oauth.baseURL = server.URL
+	oauth.baseURL.Store(server.URL)
 	sessionID := oauth.ID() + "_oauth_test"
 	navigateURI := "http://localhost:53699/auth/callback-zai"
 	oauth.Env.Logins.Register(oauth.ID(), sessionID, time.Hour, 0, &autoclawPendingLogin{
@@ -438,7 +438,7 @@ func TestLoginFileNamesAreStableAndUniqueWithoutJWTToken(t *testing.T) {
 
 	instances := Instances(envWithLogins())
 	oauth := instances[1].(*oauthLoginAdapter)
-	oauth.baseURL = server.URL
+	oauth.baseURL.Store(server.URL)
 	submit := func(sessionSuffix, code string) string {
 		t.Helper()
 		sessionID := oauth.ID() + "_oauth_" + sessionSuffix

@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
-	"freetier2api-plugin/internal/safe"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // 模型目录（Catalog）管理模型的注册视图：禁用集合、别名、额外模型、
@@ -96,6 +96,13 @@ func (c *Catalog) Configure(settings ModelSettings) {
 	c.reloadDisabled()
 }
 
+// SetNameTag 应用控制台保存的渠道标识，无需重读缓存或刷新供应商账号。
+func (c *Catalog) SetNameTag(mode string) {
+	c.mu.Lock()
+	c.settings.ModelNameTag = mode
+	c.mu.Unlock()
+}
+
 // ReloadFromState 用状态快照重算禁用集合与别名表。
 func (c *Catalog) ReloadFromState(snapshot state.State) {
 	c.mu.Lock()
@@ -128,6 +135,11 @@ func (c *Catalog) reloadDisabled() {
 
 func (c *Catalog) reloadDisabledWith(stateDisabled []string) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reloadDisabledLocked(stateDisabled)
+}
+
+func (c *Catalog) reloadDisabledLocked(stateDisabled []string) {
 	merged := make([]string, 0, len(c.settings.DisabledModels)+len(stateDisabled))
 	merged = append(merged, c.settings.DisabledModels...)
 	merged = append(merged, stateDisabled...)
@@ -140,7 +152,6 @@ func (c *Catalog) reloadDisabledWith(stateDisabled []string) {
 		}
 	}
 	c.disabled = set
-	c.mu.Unlock()
 }
 
 // RealmEnabled 报告区域是否启用（空区域视为启用）。
@@ -269,16 +280,19 @@ func (c *Catalog) FilterForVendor(vendorID string, models []pluginapi.ModelInfo)
 }
 
 // SetDisabled 批量设置禁用状态，落盘并返回归一后的清单。
-func (c *Catalog) SetDisabled(targets []string, disabled bool) []string {
+func (c *Catalog) SetDisabled(targets []string, disabled bool) ([]string, error) {
 	normalized := make([]string, 0, len(targets))
 	for _, target := range targets {
 		normalized = append(normalized, c.ExpandKeys(target)...)
 	}
 	if c.store == nil {
-		return normalized
+		return nil, fmt.Errorf("model state store is unavailable")
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	var next []string
-	c.store.Mutate(func(s *state.State) {
+	if errSave := c.store.MutateAndSave(func(s *state.State) {
 		current := make(map[string]bool, len(s.DisabledModels))
 		for _, id := range s.DisabledModels {
 			current[strings.TrimSpace(id)] = true
@@ -300,9 +314,11 @@ func (c *Catalog) SetDisabled(targets []string, disabled bool) []string {
 		sort.Strings(next)
 		s.DisabledModels = next
 		s.RestartPending = true
-	})
-	c.reloadDisabledWith(next)
-	return next
+	}); errSave != nil {
+		return nil, errSave
+	}
+	c.reloadDisabledLocked(next)
+	return next, nil
 }
 
 // RestartPending 报告是否存在待宿主重载的模型变更。

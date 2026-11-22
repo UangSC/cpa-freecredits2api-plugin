@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // 本文件提供各供应商共用的解析与转换助手。

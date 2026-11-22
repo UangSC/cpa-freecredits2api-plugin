@@ -6,22 +6,45 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
-// Catalog 汇总已注册供应商的任务族。
-type Catalog struct{ registry *core.Registry }
+// Catalog 汇总已注册供应商与扩展模块的任务族。
+type Catalog struct {
+	registry      *core.Registry
+	modules       *core.TaskRegistry
+	enabledRealms func() []string
+}
 
 // NewCatalog 构造任务目录。
 func NewCatalog(registry *core.Registry) *Catalog { return &Catalog{registry: registry} }
 
-// Specs 汇总全部启用任务族的规格（按 kind 去重，先注册者优先）。
+// SetModules 绑定可插拔任务模块注册表，使新扩展模块的排程与手动路由自动纳入目录。
+func (c *Catalog) SetModules(modules *core.TaskRegistry) { c.modules = modules }
+
+// Specs 汇总已启用任务族。共用任务族的模块合并默认整点与签到联动设置。
 func (c *Catalog) Specs() []core.TaskSpec {
 	out := make([]core.TaskSpec, 0, 8)
-	seen := map[string]bool{}
+	indices := map[string]int{}
+	add := func(spec core.TaskSpec) {
+		kind := strings.TrimSpace(spec.Kind)
+		if kind == "" {
+			return
+		}
+		if index, exists := indices[kind]; exists {
+			current := &out[index]
+			current.DefaultHours = NormalizeHours(append(current.DefaultHours, spec.DefaultHours...))
+			current.AfterCheckin = current.AfterCheckin || spec.AfterCheckin
+			current.UsesChat = current.UsesChat || spec.UsesChat
+			return
+		}
+		spec.Kind = kind
+		spec.DefaultHours = NormalizeHours(spec.DefaultHours)
+		indices[kind] = len(out)
+		out = append(out, spec)
+	}
 	if c.anyCheckin() {
-		seen[core.TaskKindCheckin] = true
-		out = append(out, core.TaskSpec{
+		add(core.TaskSpec{
 			Kind:         core.TaskKindCheckin,
 			Label:        "每日签到",
 			Description:  "对所有支持签到的账号执行签到",
@@ -30,22 +53,26 @@ func (c *Catalog) Specs() []core.TaskSpec {
 		})
 	}
 	for _, vendor := range c.registry.Vendors() {
+		if !c.vendorEnabled(vendor.ID()) {
+			continue
+		}
 		catalog, okCatalog := core.As[core.TaskCatalogProvider](vendor)
 		if !okCatalog {
 			continue
 		}
 		for _, spec := range catalog.TaskSpecs() {
-			kind := strings.TrimSpace(spec.Kind)
-			if kind == "" || seen[kind] {
-				continue
-			}
-			spec.Kind = kind
-			spec.DefaultHours = NormalizeHours(spec.DefaultHours)
-			seen[kind] = true
-			out = append(out, spec)
+			add(spec)
 		}
 	}
+	for _, spec := range c.modules.TaskSpecsFor(c.vendorEnabled) {
+		add(spec)
+	}
 	return out
+}
+
+func (c *Catalog) vendorEnabled(id string) bool {
+	vendor, found := c.registry.ByID(id)
+	return found && (c.enabledRealms == nil || core.RealmEnabled(c.enabledRealms(), vendor.Region()))
 }
 
 // SpecByKind 返回某个任务族的规格。
@@ -146,7 +173,7 @@ func NextWake(now time.Time, schedule map[string][]int) ([]string, time.Time) {
 
 func (c *Catalog) anyCheckin() bool {
 	for _, vendor := range c.registry.Vendors() {
-		if core.SupportsCheckin(vendor) {
+		if c.vendorEnabled(vendor.ID()) && core.SupportsCheckin(vendor) {
 			return true
 		}
 	}

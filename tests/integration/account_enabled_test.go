@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // accountEnabledResult 是 POST /accounts/enabled 的响应形状。

@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // 本文件实现成长任务的列表 / 报名 / 领奖接口。
@@ -1229,6 +1229,9 @@ const (
 	TaskKindDailyBonus = "dailybonus"
 )
 
+// schoolSeasonEnabled 控制已结束的 2026 开学季活动。确认上游重开后再恢复注册。
+const schoolSeasonEnabled = false
+
 // TaskSpecsFor 返回本区域注册的任务族与默认排程。
 //
 // 国际版只有一个任务族：每日活跃奖励。它的机制与 CN 签到不同（活跃信标
@@ -1247,14 +1250,17 @@ func TaskSpecsFor(region Region) []core.TaskSpec {
 			},
 		}
 	}
-	return []core.TaskSpec{
+	specs := []core.TaskSpec{
 		{Kind: TaskKindTravel, Label: "猫猫旅行", Description: "每日猫猫旅行任务", DefaultHours: []int{9, 21}, Manual: true, Route: "/travel"},
 		{Kind: TaskKindActivity, Label: "活跃上报", Description: "每日活跃与连登上报", DefaultHours: []int{10}, Manual: true, Route: "/activity"},
 		{Kind: core.TaskKindKeepalive, Label: "Token 保活", Description: "刷新账号 token", DefaultHours: []int{22}, Manual: true},
 		{Kind: TaskKindBlackcat, Label: "夜猫子", Description: "夜间任务补足", DefaultHours: []int{23}, Manual: true, Route: "/blackcat"},
-		{Kind: TaskKindSchool, Label: "开学季", Description: "开学季活动闭环", AfterCheckin: true, Manual: true, Route: "/school/run"},
 		{Kind: TaskKindStreak, Label: "连登奖励", Description: "连登兑换与抽奖闭环", AfterCheckin: true},
 	}
+	if schoolSeasonEnabled {
+		specs = append(specs, core.TaskSpec{Kind: TaskKindSchool, Label: "开学季", Description: "开学季活动闭环", AfterCheckin: true, Manual: true, Route: "/school/run"})
+	}
+	return specs
 }
 
 // TaskSpecs 实现 core.TaskCatalogProvider。
@@ -1285,7 +1291,10 @@ func (v *adapter) InspectTasks(ctx context.Context, cred *core.Credential) (core
 		}
 	}
 	sortItemsByAction(inspection.Items)
-	if school, errSchool := client.SchoolTasks(ctx, native); errSchool == nil && school != nil {
+	if !schoolSeasonEnabled {
+		return inspection, nil
+	}
+	if school, errSchool := client.SchoolTasks(ctx, native); errSchool == nil && school != nil && school.InPeriod {
 		inspection.InPeriod = school.InPeriod
 		for _, task := range school.Tasks {
 			if item, okItem := pendingSchoolItem(task); okItem {
@@ -1418,7 +1427,7 @@ var autoActivityRows = []autoActivityRow{
 func activityRowFor(code string) (autoActivityRow, bool) {
 	trimmed := strings.TrimSpace(code)
 	for _, row := range autoActivityRows {
-		if row.Code == trimmed {
+		if row.Code == trimmed && (row.Family != TaskKindSchool || schoolSeasonEnabled) {
 			return row, true
 		}
 	}
@@ -1427,6 +1436,9 @@ func activityRowFor(code string) (autoActivityRow, bool) {
 
 func (v *adapter) RunTask(ctx context.Context, cred *core.Credential, code string) (core.TaskRunResult, error) {
 	trimmed := strings.TrimSpace(code)
+	if !schoolSeasonEnabled && (trimmed == AutoTaskCodeSchool || trimmed == "school_daily") {
+		return core.TaskRunResult{Status: core.AutoStatusSkipped, Message: "本期开学季活动已结束"}, nil
+	}
 	if trimmed == core.AutoTaskCodeCheckin {
 		row := core.BuildCheckinAutoTask(ctx, v, cred)
 		if row == nil {
@@ -1458,11 +1470,12 @@ func (v *adapter) RunTask(ctx context.Context, cred *core.Credential, code strin
 		}
 		return core.TaskRunResult{Status: core.AutoStatusDone, Message: message}, nil
 	}
-	message, credit, energy, errRun := runGrowthTask(ctx, client, native, trimmed)
-	if errRun != nil {
-		return core.TaskRunResult{}, errRun
+	action := autoActionFor(trimmed)
+	if action == nil {
+		return core.TaskRunResult{}, fmt.Errorf("该任务没有对应的自动动作（可能需要客户端内交互）")
 	}
-	return core.TaskRunResult{Status: core.AutoStatusDone, Message: message, Credit: credit, Energy: energy}, nil
+	result := runGrowthRow(ctx, client, native, *action)
+	return core.TaskRunResult{Status: result.Status, Message: result.Message, Credit: result.Credit, Energy: result.Energy}, nil
 }
 
 // PrepareTasks 批量报名未接受的任务（队列与一键完成的前置）。
@@ -1514,6 +1527,9 @@ func (v *adapter) RunAllTasks(ctx context.Context, cred *core.Credential) []core
 		core.SleepContext(ctx, 1050*time.Millisecond)
 	}
 	for _, row := range autoActivityRows {
+		if row.Family == TaskKindSchool && !schoolSeasonEnabled {
+			continue
+		}
 		res := v.runActivityRow(ctx, cred, row)
 		results = append(results, core.AutoTaskResult{
 			Code:    row.Code,
@@ -1538,9 +1554,9 @@ func runGrowthRow(ctx context.Context, client *Client, native *Credential, actio
 		result.Message = errTask.Error()
 		return result
 	}
-	if task == nil {
+	if task == nil || task.Locked {
 		result.Status = core.AutoStatusSkipped
-		result.Message = "该账号无此任务"
+		result.Message = "该账号当前没有此任务或任务尚未开放"
 		return result
 	}
 	if task.Claimed {
@@ -1553,7 +1569,7 @@ func runGrowthRow(ctx context.Context, client *Client, native *Credential, actio
 		result.Message = "当前不在 23:00-08:00 计分窗口，排程会在夜间自动补足"
 		return result
 	}
-	message, credit, energy, errRun := runGrowthTask(ctx, client, native, action.Code)
+	message, credit, energy, errRun := runGrowthTask(ctx, client, native, action, task)
 	result.Credit, result.Energy = credit, energy
 	if errRun != nil {
 		result.Status = core.AutoStatusError
@@ -1589,27 +1605,18 @@ func (v *adapter) runActivityRow(ctx context.Context, cred *core.Credential, row
 	}
 }
 
-func runGrowthTask(ctx context.Context, client *Client, credential *Credential, code string) (string, int64, int64, error) {
-	action := autoActionFor(code)
-	if action == nil {
-		return "", 0, 0, fmt.Errorf("该任务没有对应的自动动作（可能需要客户端内交互）")
-	}
-	task, errTask := findGrowthTask(ctx, client, credential, code)
-	if errTask == nil && task != nil {
-		if task.Claimed {
-			return "任务已完成且已领奖", 0, 0, nil
+func runGrowthTask(ctx context.Context, client *Client, credential *Credential, action taskAction, task *Task) (string, int64, int64, error) {
+	code := action.Code
+	if task.Done() {
+		credit, energy, errClaim := claimGrowthReward(ctx, client, credential, code)
+		if errClaim != nil {
+			return "", 0, 0, fmt.Errorf("任务已达标，但领奖失败：%w", errClaim)
 		}
-		if task.Done() {
-			credit, energy, errClaim := claimGrowthReward(ctx, client, credential, code)
-			if errClaim != nil {
-				return "", 0, 0, fmt.Errorf("任务已达标，但领奖失败：%w", errClaim)
-			}
-			msg := "任务已达标（跳过重复执行）"
-			if credit > 0 || energy > 0 {
-				msg = fmt.Sprintf("任务已达标，已领奖 +%d 积分 +%d 能量", credit, energy)
-			}
-			return msg, credit, energy, nil
+		msg := "任务已达标（跳过重复执行）"
+		if credit > 0 || energy > 0 {
+			msg = fmt.Sprintf("任务已达标，已领奖 +%d 积分 +%d 能量", credit, energy)
 		}
+		return msg, credit, energy, nil
 	}
 	message, errRun := action.Run(ctx, client, credential)
 	if errRun != nil {
@@ -1741,6 +1748,9 @@ func (v *adapter) TaskStatus(ctx context.Context, cred *core.Credential) core.Ta
 	if v.region.IsGlobal() {
 		return core.TaskStatusResult{Error: "global realm（无开学季活动）"}
 	}
+	if !schoolSeasonEnabled {
+		return core.TaskStatusResult{}
+	}
 	native, err := v.Native(cred)
 	if err != nil {
 		return core.TaskStatusResult{Error: err.Error()}
@@ -1750,7 +1760,7 @@ func (v *adapter) TaskStatus(ctx context.Context, cred *core.Credential) core.Ta
 	status, errStatus := client.SchoolTasks(ctx, native)
 	if errStatus != nil {
 		result.Error = errStatus.Error()
-	} else if status != nil {
+	} else if status != nil && status.InPeriod {
 		result.InPeriod = status.InPeriod
 		for _, task := range status.Tasks {
 			result.Tasks = append(result.Tasks, core.TaskStatusView{
@@ -1759,8 +1769,10 @@ func (v *adapter) TaskStatus(ctx context.Context, cred *core.Credential) core.Ta
 			})
 		}
 	}
-	if chances, errChances := client.SchoolChances(ctx, native); errChances == nil {
-		result.Chances = chances
+	if result.InPeriod {
+		if chances, errChances := client.SchoolChances(ctx, native); errChances == nil {
+			result.Chances = chances
+		}
 	}
 	return result
 }
@@ -1768,6 +1780,9 @@ func (v *adapter) TaskStatus(ctx context.Context, cred *core.Credential) core.Ta
 // ---- 定时任务族 ----
 
 func (v *adapter) RunScheduled(ctx context.Context, cred *core.Credential, kind string) (string, error) {
+	if kind == TaskKindSchool && !schoolSeasonEnabled {
+		return "", nil
+	}
 	if v.region.IsGlobal() {
 		if kind != TaskKindDailyBonus {
 			return "", nil

@@ -8,7 +8,7 @@ package tests
 import (
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // TestVendorRegistryCompatibility 锁定供应商实例的完整对外身份与顺序。

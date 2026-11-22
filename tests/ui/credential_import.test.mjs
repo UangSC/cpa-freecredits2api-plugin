@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadConsoleAsset, loadConsoleHTML } from './_console.mjs';
 
-const html = readFileSync(new URL('../../internal/admin/console.html', import.meta.url), 'utf8');
-const loginCode = html.slice(html.indexOf('  var loginTimer = null;'), html.indexOf('  // 主「刷新」按钮执行 Token'));
+const html = loadConsoleHTML();
+const auth = loadConsoleAsset('auth.js');
+const loginCode = auth.slice(auth.indexOf('  var loginTimer = null;'));
 const qwen = { id: 'qwenwork', name: '千问办公', auth_mode: 'oauth', supports_login: true, credential_import: true, credential_import_hint: '从千问办公客户端导出凭证 JSON。' };
 const keyVendor = { id: 'key-vendor', name: 'API 渠道', auth_mode: 'apikey', supports_login: false, credential_import: true };
 
@@ -62,6 +63,17 @@ function setup(respond = () => ({ ok: true })) {
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function click(state, id) { state.get(id).handlers.click(); }
+
+test('单个供应商已有 10 个以上账号时仍可添加', async () => {
+  const state = setup();
+  state.scope.lastStatus.accounts = Array.from({ length: 12 }, () => ({ vendor_id: keyVendor.id }));
+  state.scope.startVendorAdd(keyVendor);
+  assert.equal(state.get('apiKeyBox').hidden, false);
+  state.get('inputApiKey').value = 'additional-test-key';
+  click(state, 'btnSubmitApiKey');
+  await flush();
+  assert.equal(state.requests[0].body.api_key, 'additional-test-key');
+});
 
 test('OAuth 渠道通过显式粘贴入口提交 JSON，保存后清空凭证', async () => {
   const auth = deferred();

@@ -1,59 +1,54 @@
 package admin
 
 // 本文件是凭证文件的唯一入口：
-//   - saveAuthFile：落盘（添加账号、粘贴回调登录、启用/停用）；
+//   - saveAuthFile：通过宿主保存凭证；
 //   - safeAuthFilePath：改写或删除前的全部校验。
 //
-// 「添加 API Key 账号」与「粘贴 localhost 回调完成登录」两条路径都要把一份凭证
-// 交给宿主，只有走这里才不会各自长出一套「宿主写 + 兜底写盘」的副本。启用/停用
-// 与删除同理：路径归一化在 hostbridge 边界完成，这里只负责「这个路径能不能动」。
+// 宿主负责凭证目录与运行时注册。启用、停用及删除前须核对宿主记录对应的物理文件。
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
-// authFileDirs 是宿主不可用时的兜底落盘目录：容器里是 /root/.cli-proxy-api，
-// 本地直跑时是进程工作目录。
-var authFileDirs = []string{"/root/.cli-proxy-api", "."}
+// removeAuthFile 会短暂等待 Windows 上的 CPA 文件监听器释放刚读过的凭证。
+func removeAuthFile(path string) error {
+	const sharingViolation = syscall.Errno(32)
+	err := os.Remove(path)
+	for _, wait := range []time.Duration{20 * time.Millisecond, 40 * time.Millisecond, 80 * time.Millisecond, 160 * time.Millisecond} {
+		if runtime.GOOS != "windows" || !errors.Is(err, sharingViolation) {
+			break
+		}
+		time.Sleep(wait)
+		err = os.Remove(path)
+	}
+	return err
+}
 
-// saveAuthFile 落盘一份凭证。
-//
-// 首选 host.auth.save：它写 auths 目录并热更新宿主内存里的注册表。只有这条
-// 回调不可用时才直接写盘（与凭证续期写盘兜底同一个理由）。两条都失败才算失败——
-// 调用方必须能把「没保存成功」如实告诉用户，不能出现页面显示成功而磁盘上什么都没有。
+// saveAuthFile 由 CPA 落盘并登记账号，使用宿主实际的凭证目录。
 func saveAuthFile(callbackID, fileName string, raw []byte) error {
 	name := sanitizeAuthFileName(fileName)
 	if name == "" || len(raw) == 0 {
 		return fmt.Errorf("凭证缺少文件名或内容")
 	}
 
-	// hostbridge.SaveAuth 同时负责 uid 大小写归一：落盘兜底必须写同一份内容，
-	// 否则磁盘上的 uid 与宿主登记键不一致，Windows 上会多出一条重复账号。
-	aligned, errSave := hostbridge.SaveAuth(callbackID, name, raw)
-	if errSave == nil {
-		logger.Info("saved auth file %s via host.auth.save", name)
-		return nil
+	if _, errSave := hostbridge.SaveAuth(callbackID, name, raw); errSave != nil {
+		logger.Debug("host.auth.save failed for %s: %v", name, errSave)
+		return fmt.Errorf("CPA 未能保存凭证 %s", name)
 	}
-	logger.Debug("host.auth.save failed for %s: %v", name, errSave)
-
-	for _, dir := range authFileDirs {
-		if fi, errStat := os.Stat(dir); errStat != nil || !fi.IsDir() {
-			continue
-		}
-		if errWrite := os.WriteFile(filepath.Join(dir, name), aligned, 0o600); errWrite == nil {
-			logger.Info("saved auth file %s on disk", name)
-			return nil
-		}
-	}
-	return fmt.Errorf("host.auth.save 不可用且落盘失败（%s）", name)
+	logger.Info("saved auth file %s via host.auth.save", name)
+	return nil
 }
 
 // sanitizeAuthFileName 把供应商给的凭证文件名收敛成一个安全的基名。

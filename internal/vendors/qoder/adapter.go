@@ -22,9 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 const (
@@ -218,7 +218,7 @@ func (v *adapter) Execute(ctx context.Context, cred *core.Credential, req *core.
 	// 复用 bridge 的 chat-completions 组装逻辑，但把结果写进内存而不是
 	// http.ResponseWriter——插件侧不做 HTTP 响应，只产出载荷。
 	recorder := newPayloadRecorder()
-	if errRun := RunChatCompletions(b, req.Payload, recorder, req.ContextLength); errRun != nil {
+	if errRun := RunChatCompletions(ctx, b, req.Payload, recorder, req.ContextLength); errRun != nil {
 		return nil, errRun
 	}
 	return &pluginapi.ExecutorResponse{

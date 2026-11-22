@@ -12,17 +12,16 @@ package tests
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/app"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/vendors/workbuddy"
-	"freetier2api-plugin/tests/testhost"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/vendors/workbuddy"
+	"cpa-tierbridge2api-plugin/tests/testhost"
 )
 
 // abiEnvelope 是插件响应信封（测试用；生产侧已统一到 core）。
@@ -221,9 +220,9 @@ func managementCall(t *testing.T, method, path string) pluginapi.ManagementRespo
 func managementCallWithBody(t *testing.T, method, path string, body any) pluginapi.ManagementResponse {
 	t.Helper()
 	request := pluginapi.ManagementRequest{
-		Method:  method,
-		Path:    "/v0/management/plugins/freetier2api" + path,
-		Headers: http.Header{"X-Host-Callback-Id": []string{testCallbackID}},
+		Method:         method,
+		Path:           "/v0/management/plugins/freetier2api" + path,
+		HostCallbackID: testCallbackID,
 	}
 	if body != nil {
 		request.Body = mustMarshal(body)

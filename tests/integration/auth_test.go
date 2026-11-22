@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/app"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/tests/testhost"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/tests/testhost"
 )
 
 // 登录会话绑定的回归测试。
@@ -132,7 +132,7 @@ func TestAuthParseVendorOwnershipDiscrimination(t *testing.T) {
 	}
 }
 
-// TestLegacyWorkBuddyAccountNotClaimedByCline 验证安装 FreeTier 2API 前添加的 CodeBuddy/WorkBuddy 账号
+// TestLegacyWorkBuddyAccountNotClaimedByCline 验证旧的 CodeBuddy/WorkBuddy 账号
 // 不会被 Cline 抢先误吞，且国内版和国际版分别归属到 workbuddycn 和 workbuddyglobal。
 func TestLegacyWorkBuddyAccountNotClaimedByCline(t *testing.T) {
 	installFakeHost(t)

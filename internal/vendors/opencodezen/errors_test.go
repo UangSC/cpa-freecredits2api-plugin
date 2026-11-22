@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // freeUsageLimitBody 是免费层额度耗尽时上游的原文（2026-10-26 实测

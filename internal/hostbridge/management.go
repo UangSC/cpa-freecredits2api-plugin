@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // ManagementContext 为管理接口里的上游调用构造带超时与回调 ID 的上下文。
@@ -23,10 +23,7 @@ func ManagementContext(req pluginapi.ManagementRequest, timeout time.Duration) (
 
 // RequestCallbackID 读取宿主传入的回调 ID。
 func RequestCallbackID(req pluginapi.ManagementRequest) string {
-	if req.Headers == nil {
-		return ""
-	}
-	return strings.TrimSpace(req.Headers.Get("X-Host-Callback-Id"))
+	return strings.TrimSpace(req.HostCallbackID)
 }
 
 // ErrorStatus 返回错误对应的 HTTP 状态码（默认 500）。

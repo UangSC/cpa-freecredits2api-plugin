@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // stubHostHTTPDo 把宿主 HTTP 桥换成「记录请求 + 回空 JSON」的桩。

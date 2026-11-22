@@ -1,12 +1,59 @@
 package codearts
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
+
+func TestSingleOpsActivityClaimsOnlySelectedCampaign(t *testing.T) {
+	var claimed []string
+	hostbridge.Configure(func(_, _ string, payload any) (json.RawMessage, error) {
+		var request struct {
+			URL  string `json:"url"`
+			Body []byte `json:"body"`
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(data, &request); err != nil {
+			return nil, err
+		}
+		var response string
+		switch {
+		case strings.Contains(request.URL, EpOpsDelivery):
+			response = `{"code":0,"data":{"items":[{"type":"USER_LOGIN","campaignId":"daily","claimable":true},{"type":"BENEFIT","campaignId":"a","claimable":true},{"type":"BENEFIT","campaignId":"b","claimable":true},{"type":"BENEFIT","campaignId":"ended","claimable":false}]}}`
+		case strings.Contains(request.URL, EpOpsClaim):
+			var body struct {
+				CampaignID string `json:"campaignId"`
+			}
+			if err := json.Unmarshal(request.Body, &body); err != nil {
+				return nil, err
+			}
+			claimed = append(claimed, body.CampaignID)
+			response = `{"code":0,"data":{"credit":100}}`
+		default:
+			t.Fatalf("意外活动请求：%s", request.URL)
+		}
+		return json.Marshal(map[string]any{"StatusCode": 200, "Body": []byte(response)})
+	})
+	t.Cleanup(func() { hostbridge.Configure(nil) })
+	cred := &core.Credential{Native: &Credential{AccessKeyID: "ak", SecretAccessKey: "sk", SecurityToken: "st"}}
+	inspection, err := InspectOpsActivities(context.Background(), cred)
+	if err != nil || len(inspection.Items) != 2 || inspection.Items[1].Code != "ops:b" || inspection.Items[1].RunCode != "" {
+		t.Fatalf("活动扫描结果：%+v / %v", inspection, err)
+	}
+	result := RunOpsActivities(context.Background(), cred, "b")
+	if result.Status != core.AutoStatusDone || result.Credit != 100 || len(claimed) != 1 || claimed[0] != "b" {
+		t.Fatalf("单活动结果：%+v，领取清单 %v", result, claimed)
+	}
+}
 
 // TestIdentifierAcceptsNumberAndString 锁住 campaignId 的数字/字符串两种形态。
 //

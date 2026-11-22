@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // 北京时间 12 点前的「已签到」不可信。

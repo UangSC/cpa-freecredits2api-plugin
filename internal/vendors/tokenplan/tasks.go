@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
 	"io"
 	"math"
 	"net/http"
@@ -17,6 +15,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 	"time"
 )
 
@@ -130,6 +130,8 @@ type quotaAuthPending struct {
 	ExpiresAt time.Time
 }
 
+const balanceCallbackPrefix = "tierbridge2api-balance/"
+
 func (v *adapter) QuotaCredentialHint() string {
 	return "先打开授权地址完成网页登录，再复制登录后的完整回调链接粘贴；只绑定当前账号。也可粘贴 credits/balance 的 cURL 作为兜底。不绑定则不能查询墨点。"
 }
@@ -147,7 +149,7 @@ func (v *adapter) StartQuotaAuthorization(_ context.Context, cred *core.Credenti
 	state := core.RandomHex(24)
 	expires := time.Now().Add(15 * time.Minute)
 	v.quotaAuthSessions.Store(state, quotaAuthPending{KeyHash: keyHash(native.APIKey), ExpiresAt: expires})
-	redirect := balanceOrigin + "/token-plan/points#freetier2api-balance/" + state
+	redirect := balanceOrigin + "/token-plan/points#" + balanceCallbackPrefix + state
 	link := "https://sso.openxlab.org.cn/authentication?clientId=dagw07mkg1bazlxzoy31&source=discovery&lang=zh-CN&redirect=" + url.QueryEscape(redirect)
 	return &pluginapi.AuthLoginStartResponse{Provider: core.ProviderKey, URL: link, State: state, ExpiresAt: expires}, nil
 }
@@ -158,10 +160,16 @@ func (v *adapter) callbackBalanceAuth(ctx context.Context, native *Credential, i
 		return nil, "", errors.New("请粘贴授权完成后的官方回调链接")
 	}
 	parts := strings.SplitN(callback.Fragment, "?", 2)
-	if len(parts) != 2 || !strings.HasPrefix(parts[0], "freetier2api-balance/") {
+	if len(parts) != 2 {
 		return nil, "", errors.New("回调缺少绑定状态或授权码")
 	}
-	state := strings.TrimPrefix(parts[0], "freetier2api-balance/")
+	state, matches := strings.CutPrefix(parts[0], balanceCallbackPrefix)
+	if !matches {
+		state, matches = strings.CutPrefix(parts[0], "freetier2api-balance/")
+	}
+	if !matches || state == "" {
+		return nil, "", errors.New("回调缺少绑定状态或授权码")
+	}
 	value, ok := v.quotaAuthSessions.Load(state)
 	pending, valid := value.(quotaAuthPending)
 	if !ok || !valid || time.Now().After(pending.ExpiresAt) || pending.KeyHash != keyHash(native.APIKey) {

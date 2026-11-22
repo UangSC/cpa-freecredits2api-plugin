@@ -12,7 +12,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
 )
 
 // hostLikeBuffer 申请一块宿主缓冲区口径的内存（页对齐、不在 Go 堆）。

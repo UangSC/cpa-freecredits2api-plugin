@@ -105,12 +105,16 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CC: ${{ matrix.cc }}
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+          VERSION_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
           set -euo pipefail
           mkdir -p dist
+          ldflags="-s -w"
+          if [[ -n "$VERSION_TAG" ]]; then
+            ldflags+=" -X main.pluginVersion=$VERSION_TAG"
+          fi
           go build -buildmode=c-shared -trimpath \
-            -ldflags "-s -w -X main.pluginVersion=${VERSION}" \
+            -ldflags "$ldflags" \
             -o "dist/freetier2api-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.ext }}" .
           ls -la dist
 
@@ -190,8 +194,8 @@ jobs:
           {
             echo '## 通过 CPA 插件商店安装（推荐）'
             echo
-            echo '本插件已收录进 CPA 官方插件源，无需额外配置三方源。'
-            echo '在管理面板的插件商店里直接搜 **FreeTier 2API** 一键安装即可。'
+            echo '在 CPA 中启用包含本仓库 registry.json 的插件源。'
+            echo '在管理面板的插件商店中搜索 **TierBridge 2API**。'
             echo
             echo '## 手动安装'
             echo

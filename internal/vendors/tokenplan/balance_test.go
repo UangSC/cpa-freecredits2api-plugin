@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 type balanceTestHost struct{ dir string }
@@ -112,7 +112,7 @@ func TestAuthorizationCallbackIsScopedAndUpdatesOneCredential(t *testing.T) {
 	}
 	authorize, _ := url.Parse(start.URL)
 	callback := authorize.Query().Get("redirect") + "?code=mock-code"
-	if !strings.HasPrefix(callback, balanceOrigin+"/token-plan/points#freetier2api-balance/") {
+	if !strings.HasPrefix(callback, balanceOrigin+"/token-plan/points#tierbridge2api-balance/") {
 		t.Fatal("回调应使用官网允许的 HTTPS 地址")
 	}
 	token := testBalanceToken(time.Now().Add(time.Hour).Unix())

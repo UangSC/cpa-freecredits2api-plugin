@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // 区域默认基地址（userapi REST 基址，cn/global 双部署）。
@@ -173,7 +173,7 @@ func ApplyChatHeaders(req *http.Request, token, model string) {
 	req.Header.Set("X-Lang", "zh-CN")
 	req.Header.Set("X-Client-Type", "pc")
 	req.Header.Set("X-Trace-Id", core.RandomHex(16))
-	req.Header.Set("x_trace_id", "freetier2api")
+	req.Header.Set("x_trace_id", "tierbridge2api")
 	if strings.TrimSpace(token) != "" {
 		req.Header.Set("Authorization", bearer(token))
 		req.Header.Set("X-Authorization", bearer(token))

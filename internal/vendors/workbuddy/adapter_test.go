@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 func TestConfigureAppliesPromptAndUADefaults(t *testing.T) {

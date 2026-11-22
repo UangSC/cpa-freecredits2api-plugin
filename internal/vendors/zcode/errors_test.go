@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 func TestClassifyOrderingCaptchaBeforeAuth(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 type CheckinResult struct {
@@ -1067,7 +1067,11 @@ func isAlreadyClaimed(err error) bool {
 // 每日登录由签到行负责，这里跳过它：重复领只会拿到「已领取」，白花一次请求。
 // 部分成功也按 done 上报（确实领到了东西），失败明细写进同一行，不吞证据。
 func claimOpsActivities(ctx context.Context, run *autoRun) (autoOutcome, error) {
-	activities, errFetch := fetchOpsActivities(ctx, run.cred)
+	return claimMatchingOpsActivities(ctx, run.cred, "")
+}
+
+func claimMatchingOpsActivities(ctx context.Context, cred *Credential, campaignID string) (autoOutcome, error) {
+	activities, errFetch := fetchOpsActivities(ctx, cred)
 	if errFetch != nil {
 		return autoOutcome{}, errFetch
 	}
@@ -1075,13 +1079,10 @@ func claimOpsActivities(ctx context.Context, run *autoRun) (autoOutcome, error) 
 	failures := make([]string, 0, 2)
 	var total int64
 	for _, activity := range activities {
-		if activity.Type == OpsDailyLoginType || !activity.Claimable {
+		if !claimableOpsActivity(activity) || (campaignID != "" && campaignID != activity.CampaignID) {
 			continue
 		}
-		if claimedStatuses[strings.ToUpper(activity.Status)] {
-			continue
-		}
-		claim, errClaim := claimOps(ctx, run.cred, activity.CampaignID)
+		claim, errClaim := claimOps(ctx, cred, activity.CampaignID)
 		if errClaim != nil {
 			// 「已经领过」不是失败：同一活动可能已由签到或上一轮领走，
 			// 把它记成错误会让用户以为一键任务坏了。
@@ -1093,7 +1094,7 @@ func claimOpsActivities(ctx context.Context, run *autoRun) (autoOutcome, error) 
 		}
 		if claim.benefitID != "" {
 			// 与签到一致：需要二次确认的通道补 confirm，失败不推翻已领取的事实。
-			_, _ = signedSnapJSON(ctx, http.MethodPost, SnapEngineApiHost+EpOpsConfirm, run.cred,
+			_, _ = signedSnapJSON(ctx, http.MethodPost, SnapEngineApiHost+EpOpsConfirm, cred,
 				[]byte(`{"campaignId":"`+jsonEscape(activity.CampaignID)+`"}`))
 		}
 		amount := claim.credit
@@ -1115,4 +1116,77 @@ func claimOpsActivities(ctx context.Context, run *autoRun) (autoOutcome, error) 
 	default:
 		return autoOutcome{reason: "没有其它可领活动"}, nil
 	}
+}
+
+func claimableOpsActivity(activity *opsActivity) bool {
+	return activity != nil && activity.Type != OpsDailyLoginType && activity.Claimable &&
+		strings.TrimSpace(activity.CampaignID) != "" && !claimedStatuses[strings.ToUpper(activity.Status)]
+}
+
+// HasOpsCredential 报告凭证是否具备查询与领取 CodeArts 运营活动所需的 AK。
+func HasOpsCredential(cred *core.Credential) (bool, string) {
+	if cred == nil {
+		return false, "凭证为空"
+	}
+	native, ok := cred.Native.(*Credential)
+	if !ok || native == nil {
+		return false, "非 CodeArts 原生凭证"
+	}
+	if strings.TrimSpace(native.AccessKeyID) == "" {
+		return false, "凭证缺少 AK，无法查询活动列表"
+	}
+	return true, ""
+}
+
+// InspectOpsActivities 扫描 CodeArts 账号当前可领取的运营活动条目（不含每日登录签到）。
+func InspectOpsActivities(ctx context.Context, cred *core.Credential) (core.TaskInspection, error) {
+	ok, reason := HasOpsCredential(cred)
+	if !ok {
+		return core.TaskInspection{}, errors.New(reason)
+	}
+	native := cred.Native.(*Credential)
+	activities, errFetch := fetchOpsActivities(ctx, native)
+	if errFetch != nil {
+		return core.TaskInspection{}, errFetch
+	}
+	inspection := core.TaskInspection{}
+	for _, activity := range activities {
+		if !claimableOpsActivity(activity) {
+			continue
+		}
+		inspection.InPeriod = true
+		title := "运营活动 " + activity.CampaignID
+		if activity.Amount > 0 {
+			title = fmt.Sprintf("运营活动 %s（+%d 积分）", activity.CampaignID, activity.Amount)
+		}
+		inspection.Items = append(inspection.Items, core.TaskItem{
+			Kind:      "ops_benefit",
+			KindLabel: "运营活动",
+			Code:      "ops:" + activity.CampaignID,
+			Title:     title,
+			Target:    1,
+		})
+	}
+	return inspection, nil
+}
+
+// RunOpsActivities 领取 CodeArts 运营活动列表里除每日登录之外的全部可领活动。
+func RunOpsActivities(ctx context.Context, cred *core.Credential, campaignID string) core.AutoTaskResult {
+	ok, reason := HasOpsCredential(cred)
+	if !ok {
+		return core.AutoTaskResult{
+			Code:    AutoTaskCodeOpsBenefit,
+			Status:  core.AutoStatusSkipped,
+			Message: reason,
+		}
+	}
+	native := cred.Native.(*Credential)
+	task, _ := autoTaskFor(AutoTaskCodeOpsBenefit)
+	if campaignID != "" {
+		task.code = "ops:" + campaignID
+		task.exec = func(ctx context.Context, run *autoRun) (autoOutcome, error) {
+			return claimMatchingOpsActivities(ctx, run.cred, campaignID)
+		}
+	}
+	return task.run(ctx, &autoRun{cred: native})
 }

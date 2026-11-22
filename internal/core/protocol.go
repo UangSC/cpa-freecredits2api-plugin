@@ -3,7 +3,7 @@ package core
 import (
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // ToolParameters 返回声明「支持工具调用」时必须一并列出的参数。

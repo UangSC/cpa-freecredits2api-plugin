@@ -1,6 +1,6 @@
 package app
 
-// freetier2api —— 多供应商免费额度插件。
+// TierBridge 2API 将多个供应商接入 CPA。
 //
 // 本文件包含插件身份、RPC 方法分发与注册响应。C ABI 在 cgo.go；
 // 供应商注册表由 App 构造，组合根在 vendors.go。
@@ -10,17 +10,18 @@ import (
 	"fmt"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 const (
+	// pluginID 已用于 CPA 配置、插件文件名与管理路由，升级沿用该 ID。
 	pluginID          = "freetier2api"
-	pluginDisplayName = "FreeTier 2API"
+	pluginDisplayName = "TierBridge 2API"
 	pluginAuthor      = "jiandanc/Likhixang/UangSC"
-	pluginRepository  = "https://github.com/UangSC/cpa-freetier2api-plugin"
+	pluginRepository  = "https://github.com/UangSC/cpa-tierbridge2api-plugin"
 
 	providerKey           = core.ProviderKey
 	managementRoutePrefix = "/plugins/" + pluginID
@@ -130,11 +131,8 @@ func (a *App) handlePluginRegister(request []byte) ([]byte, error) {
 	if errConfig != nil {
 		return nil, fmt.Errorf("plugin.register: %w", errConfig)
 	}
-	if errApply := a.ApplyConfig(cfg); errApply != nil {
+	if errApply := a.applyConfig(cfg, true); errApply != nil {
 		return nil, fmt.Errorf("plugin.register: %w", errApply)
-	}
-	if _, errState := a.loadState(cfg); errState != nil {
-		logger.Error("load state failed: %v", errState)
 	}
 	a.applyModelCatalog(cfg)
 	if !a.registered {
@@ -154,13 +152,8 @@ func (a *App) handlePluginReconfigure(request []byte) ([]byte, error) {
 		return nil, fmt.Errorf("plugin.reconfigure: %w", errConfig)
 	}
 	previous := a.Config()
-	if errApply := a.ApplyConfig(cfg); errApply != nil {
+	if errApply := a.applyConfig(cfg, previous.StateDir != cfg.StateDir); errApply != nil {
 		return nil, fmt.Errorf("plugin.reconfigure: %w", errApply)
-	}
-	if previous.StateDir != cfg.StateDir {
-		if _, errState := a.loadState(cfg); errState != nil {
-			logger.Error("reload state failed: %v", errState)
-		}
 	}
 	a.applyModelCatalog(cfg)
 	a.resumePluginWork()

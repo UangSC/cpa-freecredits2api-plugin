@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 func TestClassifyOrderingMatters(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // 上游错误的分类与映射。

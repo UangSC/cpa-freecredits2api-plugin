@@ -21,15 +21,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
 	"errors"
-	"freetier2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/safe"
 	"regexp"
 	"sort"
 )
@@ -48,7 +48,7 @@ import (
 // 裸 JSON 载荷，帧包装交给宿主。
 
 // RunChatCompletions 执行一次非流式 chat-completions，把响应体写进 w。
-func RunChatCompletions(b *Bridge, payload []byte, w io.Writer, contextLength int64) error {
+func RunChatCompletions(ctx context.Context, b *Bridge, payload []byte, w io.Writer, contextLength int64) error {
 	req, errDecode := decodeChatRequest(payload)
 	if errDecode != nil {
 		return errDecode
@@ -60,7 +60,7 @@ func RunChatCompletions(b *Bridge, payload []byte, w io.Writer, contextLength in
 	var content strings.Builder
 	var toolCallBuf []interface{}
 	var inputTokens, outputTokens int
-	errCall := b.CallQoderWithOpts(context.Background(), InferAgent(req.Model), messages, req.Model, req.Tools, CallOpts{ContextWindow: contextLength}, func(d Delta) {
+	errCall := b.CallQoderWithOpts(ctx, InferAgent(req.Model), messages, req.Model, req.Tools, CallOpts{ContextWindow: contextLength}, func(d Delta) {
 		if d.InputTokens > 0 || d.OutputTokens > 0 {
 			inputTokens, outputTokens = d.InputTokens, d.OutputTokens
 		}

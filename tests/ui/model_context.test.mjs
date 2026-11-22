@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadConsoleHTML } from './_console.mjs';
 
-const html = readFileSync(new URL('../../internal/admin/console.html', import.meta.url), 'utf8');
+const html = loadConsoleHTML();
 const contextFunctions = html.slice(html.indexOf('  function parseContextTokens('), html.indexOf('  // selectedModelIDs'));
 const formatFunction = html.slice(html.indexOf('  function formatTokens('), html.indexOf('  // modelsLoaded'));
 

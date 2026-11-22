@@ -1,9 +1,9 @@
 package app
 
 import (
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/admin"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/admin"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // 本文件只导出测试与嵌入方需要的纯类型/纯函数，不暴露任何进程级状态。

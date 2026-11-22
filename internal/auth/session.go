@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // Session 是一次进行中的登录会话。

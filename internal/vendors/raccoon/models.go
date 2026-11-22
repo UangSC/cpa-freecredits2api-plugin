@@ -22,8 +22,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // modelsHTTPTimeout 是目录请求的上限。

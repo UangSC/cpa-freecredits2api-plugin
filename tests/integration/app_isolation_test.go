@@ -3,14 +3,50 @@ package tests
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/app"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
+
+func TestPluginRegisterAppliesSavedRuntimeSettings(t *testing.T) {
+	dir := t.TempDir()
+	store := state.NewStore()
+	store.Configure(dir)
+	if err := store.MutateAndSave(func(snapshot *state.State) {
+		snapshot.PromptMode = "append"
+		snapshot.ModelNameTag = "prefix"
+	}); err != nil {
+		t.Fatal(err)
+	}
+	vendor := &recordingVendor{region: "cn"}
+	instance := app.MustNew(app.Options{Factories: []core.VendorFactory{{
+		Instances: func(env core.Env) []core.Vendor {
+			vendor.env = env
+			return []core.Vendor{vendor}
+		},
+	}}})
+	t.Cleanup(instance.StopBackgroundWork)
+	yamlConfig := fmt.Sprintf("state_dir: %q\nlog_to_host: false\n", dir)
+	request, err := json.Marshal(app.LifecycleRequest{ConfigYAML: []byte(yamlConfig)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := instance.HandleMethod(pluginabi.MethodPluginRegister, request); err != nil {
+		t.Fatal(err)
+	}
+	if vendor.prompt != "append" {
+		t.Fatalf("启动时没有应用已保存的提示词模式，实际为 %q", vendor.prompt)
+	}
+	models := instance.ApplyModelAliases(vendor.ID(), []pluginapi.ModelInfo{{ID: "fixture"}})
+	if models[0].ID != vendor.ID()+"-fixture" {
+		t.Fatalf("启动时没有应用已保存的模型渠道标识，实际为 %q", models[0].ID)
+	}
+}
 
 // TestAppsHaveIsolatedRegistryAndState 验证 App 实例之间不共享注册表与状态。
 func TestAppsHaveIsolatedRegistryAndState(t *testing.T) {

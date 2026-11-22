@@ -12,9 +12,9 @@ import (
 	"errors"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // fakeQuotaProvider 记录每次调用实际用的凭证，并按序号返回预置结果。

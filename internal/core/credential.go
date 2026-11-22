@@ -6,6 +6,9 @@ import (
 	"sync"
 )
 
+// AuthRemovalMarker 是宿主注销插件凭证时使用的临时 JSON 字段。
+const AuthRemovalMarker = "_tierbridge2api_remove"
+
 // Credential 是归一化后的账号凭证，**字段取各供应商的并集**。
 //
 // 设计取舍：各供应商的凭证结构差异较大（WorkBuddy 用嵌套的 auth/account，

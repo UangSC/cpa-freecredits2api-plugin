@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"freetier2api-plugin/internal/core"
 	"net/http"
 	"sort"
 	"strings"
+	"cpa-tierbridge2api-plugin/internal/core"
 	"time"
 )
 
@@ -225,7 +225,7 @@ func compactSchema(schema map[string]any) map[string]any {
 		}
 	}
 	for index, key := range keys {
-		name := fmt.Sprintf("freetier_schema_%d", index)
+		name := fmt.Sprintf("tierbridge_schema_%d", index)
 		if defs, ok := existing.(map[string]any); ok {
 			if _, collision := defs[name]; collision {
 				return schema

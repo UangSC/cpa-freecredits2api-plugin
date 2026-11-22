@@ -1,0 +1,673 @@
+<svg class="action-icon-defs" xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false">
+  <symbol id="action-icon-quota" viewBox="0 0 24 24">
+    <path d="M20.5 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h13.5a2 2 0 0 0 2-2v-2M3 8h17.5M22 10.5h-6a2.75 2.75 0 0 0 0 5.5h6z"/>
+    <circle cx="16.5" cy="13.25" r=".9" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="action-icon-checkin" viewBox="0 0 24 24">
+    <rect x="3.5" y="5" width="17" height="16" rx="2.5"/>
+    <path d="M7.75 3v4M16.25 3v4M3.5 10h17M8.5 15.5l2.4 2.4 4.6-4.6"/>
+  </symbol>
+  <symbol id="action-icon-credential" viewBox="0 0 24 24">
+    <path d="M10.5 12a4.75 4.75 0 1 0-2.6-3.65L3 13.25V17h3.75v-2.5h2.5V12zM13.5 14a4.25 4.25 0 1 1-1.05 4.7M21 12.5v3.75h-3.75"/>
+    <circle cx="12.5" cy="7.2" r="1" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="action-icon-automate" viewBox="0 0 24 24">
+    <path d="M13.65 2.5 4.5 13.25H11l-.65 8.25 9.15-10.75H13z"/>
+  </symbol>
+  <symbol id="action-icon-scan" viewBox="0 0 24 24">
+    <path d="M8 3.5H5.5a2 2 0 0 0-2 2V8M16 3.5h2.5a2 2 0 0 1 2 2V8M3.5 16v2.5a2 2 0 0 0 2 2H8M20.5 16v2.5a2 2 0 0 1-2 2H16M3.5 12h17M8 8.5h8M8 15.5h8"/>
+  </symbol>
+  <symbol id="action-icon-queue" viewBox="0 0 24 24">
+    <path d="M3.5 6h8.5M3.5 12h6.5M3.5 18h8.5M14.5 7.5l7 4.5-7 4.5z"/>
+  </symbol>
+</svg>
+
+<header>
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h12M4 10h8M4 14h10"/>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <div class="brand-row">
+          <h1>__PLUGIN_NAME__</h1>
+          <span class="ver-badge" id="headerVersion">__PLUGIN_VERSION__</span>
+        </div>
+        <div class="sub" id="headerSub">多供应商账号、额度、模型与任务管理 · 本地零凭证存储</div>
+      </div>
+    </div>
+
+    <nav class="tabs" id="mainTabs" role="tablist" aria-label="功能分区">
+      <a href="#view-accounts" role="tab" data-view="accounts" class="active">账号 <span class="tab-badge" id="tabBadgeAccounts"></span></a>
+      <a href="#view-models" role="tab" data-view="models">模型 <span class="tab-badge" id="tabBadgeModels"></span></a>
+      <a href="#view-tasks" role="tab" data-view="tasks">任务 <span class="tab-badge" id="tabBadgeTasks"></span></a>
+      <a href="#view-settings" role="tab" data-view="settings">设置</a>
+      <a href="#view-logs" role="tab" data-view="logs">日志</a>
+    </nav>
+
+    <div class="topbar-right">
+      <button type="button" class="icon-btn" id="btnNoticeToggle" title="显示或隐藏合规与免责声明">声明</button>
+      <button type="button" class="icon-btn" id="btnTheme" title="切换界面主题（自动 / 浅色 / 深色）">
+        <span id="themeIcon" aria-hidden="true"></span>
+        <span id="themeLabel">自动</span>
+      </button>
+      <button type="button" class="icon-btn icon-btn-logout" id="btnLogout" title="退出面板并返回管理密钥验证弹窗" hidden>
+        <svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4H5.5A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/><path d="M12.5 13.5L16 10l-3.5-3.5"/><path d="M16 10H8"/></svg>
+        <span>退出</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="disclaimer" id="disclaimerBar">
+    <span class="disclaimer-dot" aria-hidden="true">!</span>
+    <div class="disclaimer-body">
+      <b>合规与免责声明：</b>本项目仅供个人学习与技术研究使用，严禁用于任何商业售卖、API 转售、代刷代充或违反各上游平台服务条款及法律法规的非法用途。使用本插件产生的一切风险（含账号封禁、权益清零等）均由使用者自行承担。
+    </div>
+    <button type="button" class="disclaimer-close" id="btnCloseDisclaimer" title="收起声明（可点击右上角「声明」随时查看）">收起</button>
+  </div>
+
+  <div id="banner" class="banner" role="status" aria-live="polite"></div>
+
+  <!-- ==================== 视图 1：账号管理 ==================== -->
+  <section id="view-accounts" class="view active">
+    <div class="kpi-strip" id="accountKpiStrip">
+      <button type="button" class="kpi-chip active" data-kpi="all" id="kpiAll">
+        <span class="kpi-label"><span class="kpi-dot accent"></span>全部账号</span>
+        <span class="kpi-val" id="kpiValAll">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-kpi="enabled" id="kpiEnabled">
+        <span class="kpi-label"><span class="kpi-dot ok"></span>已启用</span>
+        <span class="kpi-val" id="kpiValEnabled">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-kpi="disabled" id="kpiDisabled">
+        <span class="kpi-label"><span class="kpi-dot"></span>已停用</span>
+        <span class="kpi-val" id="kpiValDisabled">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-kpi="attention" id="kpiAttention">
+        <span class="kpi-label"><span class="kpi-dot warn"></span>待关注</span>
+        <span class="kpi-val" id="kpiValAttention">0</span>
+      </button>
+    </div>
+
+    <div class="split-layout">
+      <aside class="vendor-rail" id="accountVendorRail" aria-label="按供应商筛选账号">
+        <div class="rail-head">
+          <span>供应商</span>
+          <span class="tnum" id="accountRailTotal"></span>
+        </div>
+        <div class="rail-list" id="accountRailList"></div>
+        <div class="rail-foot" id="accountRailFoot" hidden>
+          <button type="button" class="act subtle" id="btnRailAddVendor">+ 添加此渠道账号</button>
+        </div>
+      </aside>
+
+      <div class="workspace-card">
+        <div class="workspace-head">
+          <div class="workspace-title">
+            <h2 id="accountWorkspaceTitle">全部账号</h2>
+            <span class="muted" id="accountCount"></span>
+            <span class="meta-chip" id="accountFilterHint" hidden></span>
+            <button type="button" class="act xs subtle" id="btnResetAccountScope" hidden>返回全部</button>
+          </div>
+          <div class="toolbar-group">
+            <label class="search">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="M13.5 13.5L17 17" stroke-linecap="round"/></svg>
+              <span class="sr-only">筛选账号</span>
+              <input type="text" id="accountFilter" placeholder="搜索账号 / 备注 / 渠道">
+              <span class="search-kbd">/</span>
+              <button type="button" class="search-clear" id="btnClearAccountFilter" aria-label="清空搜索">×</button>
+            </label>
+            <select id="accountSort" aria-label="账号排序">
+              <option value="default">默认排序</option>
+              <option value="quota_desc">额度高 → 低</option>
+              <option value="quota_asc">额度低 → 高</option>
+              <option value="refreshed">刷新时间最新</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <div class="dropdown">
+              <button type="button" class="act primary" id="btnAddAccount">
+                <svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11"/></svg>
+                <span class="btn-label">添加账号</span>
+                <span class="caret" aria-hidden="true"></span>
+              </button>
+              <div class="dropdown-menu vendor-picker" id="addVendorMenu" hidden></div>
+            </div>
+            <button type="button" class="act" id="btnLoadQuotas">
+              <svg class="btn-ico action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#action-icon-quota"/></svg>
+              <span class="btn-label">查询额度</span>
+            </button>
+            <button type="button" class="act" id="btnCheckin">
+              <svg class="btn-ico action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#action-icon-checkin"/></svg>
+              <span class="btn-label">一键签到</span>
+            </button>
+            <button type="button" class="act" id="btnRefresh">
+              <svg class="btn-ico action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#action-icon-credential"/></svg>
+              <span class="btn-label">凭证更新</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="batch-bar" id="accountBatchBar">
+          <span class="batch-info" id="accountBatchInfo">未选中账号（上方查额、签到和凭证更新作用于全部账号）</span>
+          <span class="batch-warn" id="accountBatchWarn" hidden></span>
+          <span class="spacer" style="flex:1 1 auto"></span>
+          <div class="seg">
+            <button type="button" class="act" id="btnSelectAllAccounts" title="勾选当前页显示的账号">选本页</button>
+            <button type="button" class="act" id="btnSelectFilteredAccounts" title="勾选当前筛选结果中的全部账号">选全部筛选</button>
+            <button type="button" class="act" id="btnSelectNoneAccounts">清空</button>
+          </div>
+          <div class="seg">
+            <button type="button" class="act" id="btnEnableAccounts">启用</button>
+            <button type="button" class="act" id="btnDisableAccounts">停用</button>
+          </div>
+          <button type="button" class="act danger" id="btnDeleteAccounts" disabled>删除</button>
+        </div>
+
+        <!-- 统一居中轻量授权弹窗（保持位于 #accounts 之前，兼容既有测试断言） -->
+        <div class="modal" id="smsBox" hidden role="dialog" aria-modal="true" aria-labelledby="smsTitle">
+          <div class="modal-box">
+            <h2 id="smsTitle">手机验证码登录</h2>
+            <div class="row">
+              <input type="tel" id="inputSmsPhone" placeholder="手机号（11 位）" class="grow-2" autocomplete="off">
+              <button type="button" class="act" id="btnSmsSend">发送验证码</button>
+            </div>
+            <div class="row">
+              <input type="text" id="inputSmsCode" placeholder="6 位短信验证码" class="grow" maxlength="6" autocomplete="off">
+              <input type="text" id="inputSmsLabel" placeholder="备注名称（可选）" class="grow">
+            </div>
+            <div class="hint" id="smsStatus">输入手机号获取验证码。</div>
+            <div class="modal-foot">
+              <button type="button" class="act" id="btnSmsCancel">取消</button>
+              <button type="button" class="act primary" id="btnSmsVerify">登录并添加</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal" id="loginBox" hidden role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+          <div class="modal-box">
+            <h2 id="loginTitle">完成授权</h2>
+            <div class="row" id="loginVariantRow" hidden style="display:none"></div>
+            <div class="login-captcha" id="loginCaptcha" hidden></div>
+            <div class="row" style="margin-top:8px">
+              <input type="text" id="loginUrl" readonly class="grow mono" placeholder="授权链接生成中…">
+              <button type="button" class="act primary" id="btnOpenUrl">打开链接</button>
+              <button type="button" class="act" id="btnCopyUrl">复制</button>
+            </div>
+            <div class="hint" id="loginStatus">等待授权…</div>
+            <div class="row" id="loginCredentialRow" hidden style="margin-top:10px">
+              <button type="button" class="act subtle" id="btnPasteCredential">改为粘贴凭证 JSON</button>
+            </div>
+            <details id="loginPasteBox" hidden>
+              <summary>回调没到插件？展开粘贴回调链接</summary>
+              <div class="hint" id="loginPasteHint"></div>
+              <textarea id="loginPasteUrl" rows="3" style="margin-top:6px"
+                placeholder="把浏览器地址栏里的整条 localhost 链接粘贴到这里"></textarea>
+              <div class="row" style="margin-top:8px">
+                <button type="button" class="act primary" id="btnSubmitCallback">提交回调链接</button>
+                <a id="loginPasteRedirect" class="act" target="_blank" rel="noopener" hidden>打开华为云登录页</a>
+                <span class="hint" id="loginPasteStatus" style="margin-top:0"></span>
+              </div>
+            </details>
+            <div class="modal-foot">
+              <button type="button" class="act" id="btnLoginCancel">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal" id="apiKeyBox" hidden role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle">
+          <div class="modal-box">
+            <h2 id="apiKeyTitle">完成授权</h2>
+            <div class="row" id="apiKeyFields">
+              <label for="inputApiKey" class="sr-only">模型 API Key</label>
+              <input type="password" id="inputApiKey" placeholder="输入 API Key（必填）" class="grow-2" autocomplete="off" spellcheck="false">
+              <label for="inputApiLabel" class="sr-only">账号备注</label>
+              <input type="text" id="inputApiLabel" placeholder="备注名称（可选）" class="grow">
+            </div>
+            <div class="hint" id="apiKeyHint"></div>
+            <div class="row" style="margin-top:8px"><button type="button" class="act subtle" id="btnToggleCredentialMode" hidden>粘贴凭证</button></div>
+            <div class="quota-cred-box" id="quotaCredentialBox" hidden>
+              <h3 style="margin-top:0">墨点授权（可选）</h3>
+              <div class="hint" id="quotaCredentialHint" style="margin-top:2px"></div>
+              <div class="row" style="margin-top:8px">
+                <button type="button" class="act" id="btnQuotaAuthorizationGenerate">生成授权地址</button>
+                <input id="quotaAuthorizationUrl" type="text" readonly class="grow mono" aria-label="墨点授权地址" placeholder="生成后可复制或打开" autocomplete="off">
+                <a id="quotaAuthorizationLink" class="act primary" target="_blank" rel="noopener" hidden>打开授权地址</a>
+                <button type="button" class="act" id="btnCopyQuotaAuthorizationUrl" disabled>复制地址</button>
+              </div>
+              <label for="inputQuotaCredential">授权回调或余额 cURL</label>
+              <textarea id="inputQuotaCredential" rows="4" autocomplete="off" spellcheck="false"
+                aria-label="授权回调或余额 cURL" placeholder="登录后粘贴完整回调网址，也可粘贴余额请求的 cURL" style="width:100%;box-sizing:border-box;-webkit-text-security:disc"></textarea>
+              <div class="hint">填写 Key 后生成授权地址，登录并复制完整回调网址到这里；也可直接粘贴余额请求 cURL。留空时仅保存模型 Key。</div>
+            </div>
+            <div class="modal-foot">
+              <button type="button" class="act" id="btnCancelApiKey">取消</button>
+              <button type="button" class="act primary" id="btnSubmitApiKey">完成授权</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="accounts"></div>
+        <div class="pager" id="accountPager"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 视图 2：模型管理 ==================== -->
+  <section id="view-models" class="view">
+    <div class="kpi-strip kpi-6" id="modelKpiStrip">
+      <button type="button" class="kpi-chip active" data-mkpi="all" id="mKpiAll">
+        <span class="kpi-label"><span class="kpi-dot accent"></span>全部模型</span>
+        <span class="kpi-val" id="mKpiValAll">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-mkpi="enabled" id="mKpiEnabled">
+        <span class="kpi-label"><span class="kpi-dot ok"></span>已启用</span>
+        <span class="kpi-val" id="mKpiValEnabled">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-mkpi="disabled" id="mKpiDisabled">
+        <span class="kpi-label"><span class="kpi-dot"></span>已停用</span>
+        <span class="kpi-val" id="mKpiValDisabled">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-mkpi="aliased" id="mKpiAliased">
+        <span class="kpi-label"><span class="kpi-dot v0"></span>已设别名</span>
+        <span class="kpi-val" id="mKpiValAliased">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-mkpi="images" id="mKpiImages">
+        <span class="kpi-label"><span class="kpi-dot v1"></span>支持图片</span>
+        <span class="kpi-val" id="mKpiValImages">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-mkpi="tools" id="mKpiTools">
+        <span class="kpi-label"><span class="kpi-dot v2"></span>支持工具</span>
+        <span class="kpi-val" id="mKpiValTools">0</span>
+      </button>
+    </div>
+
+    <div class="split-layout" id="modelsSplitLayout">
+      <aside class="vendor-rail" id="modelVendorRail" aria-label="按供应商筛选模型">
+        <div class="rail-head">
+          <span>供应商</span>
+          <span class="tnum" id="modelRailTotal"></span>
+        </div>
+        <div class="rail-list" id="modelRailList"></div>
+      </aside>
+
+      <div class="workspace-card">
+        <div class="workspace-head">
+          <div class="workspace-title">
+            <h2 id="modelWorkspaceTitle">模型清单</h2>
+            <span class="muted" id="modelCount"></span>
+            <button type="button" class="act xs subtle" id="btnResetModelScope" hidden>返回全部</button>
+          </div>
+          <div class="view-seg" role="group" aria-label="模型展示模式">
+            <button type="button" class="active" id="btnModelViewVendor">按供应商</button>
+            <button type="button" id="btnModelViewAgg">按对外 ID 聚合</button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <button type="button" class="act primary" id="btnLoadModels">
+              <svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10a6 6 0 1 1 1.7 4.2"/><path d="M4 14v-4h4"/></svg>
+              <span class="btn-label">读取模型清单</span>
+            </button>
+          </div>
+          <span class="spacer"></span>
+          <label class="search">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="M13.5 13.5L17 17" stroke-linecap="round"/></svg>
+            <span class="sr-only">筛选模型</span>
+            <input type="text" id="modelFilter" placeholder="搜索模型 ID / 别名 / 供应商">
+            <span class="search-kbd">/</span>
+            <button type="button" class="search-clear" id="btnClearModelFilter" aria-label="清空搜索">×</button>
+          </label>
+          <div class="dropdown cols-setter">
+            <button type="button" class="act" id="btnModelCols" aria-haspopup="true" aria-expanded="false"
+                    title="选择要在表格中展示的列">
+              <svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 6h12M4 10h12M4 14h12"/><circle cx="7.5" cy="6" r="1.4" fill="currentColor"/><circle cx="13" cy="10" r="1.4" fill="currentColor"/><circle cx="9" cy="14" r="1.4" fill="currentColor"/></svg>
+              <span class="btn-label">列展示</span>
+              <span class="caret" aria-hidden="true"></span>
+            </button>
+            <div class="dropdown-menu right" id="modelColsMenu" hidden></div>
+          </div>
+        </div>
+
+        <div class="vendor-quick-bar" id="modelVendorQuickBar" hidden></div>
+
+        <div class="batch-bar" id="modelBatchBar">
+          <span class="batch-info" id="modelBatchInfo">行内开关可即时启停 · 点击「模型 ID」改别名（同名自动负载均衡）</span>
+          <span class="spacer" style="flex:1 1 auto"></span>
+          <div class="seg">
+            <button type="button" class="act" id="btnSelectAllModels">全选本页</button>
+            <button type="button" class="act" id="btnSelectNoneModels">清空</button>
+          </div>
+          <div class="seg">
+            <button type="button" class="act" id="btnEnableModels">启用选中</button>
+            <button type="button" class="act" id="btnDisableModels">停用选中</button>
+          </div>
+        </div>
+
+        <div id="models"></div>
+        <div class="pager" id="modelPager"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 视图 3：任务中心（模块化活动与任务插件口） ==================== -->
+  <section id="view-tasks" class="view">
+    <div class="kpi-strip" id="taskKpiStrip">
+      <button type="button" class="kpi-chip active" data-tkpi="all" id="tKpiAll">
+        <span class="kpi-label"><span class="kpi-dot accent"></span>已挂载模块</span>
+        <span class="kpi-val" id="tKpiValModules">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-tkpi="scan" id="tKpiScan">
+        <span class="kpi-label"><span class="kpi-dot ok"></span>可扫描模块</span>
+        <span class="kpi-val" id="tKpiValScan">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-tkpi="chat" id="tKpiChat">
+        <span class="kpi-label"><span class="kpi-dot warn"></span>含对话消耗</span>
+        <span class="kpi-val" id="tKpiValChat">0</span>
+      </button>
+      <button type="button" class="kpi-chip" data-tkpi="pending" id="tKpiPending">
+        <span class="kpi-label"><span class="kpi-dot"></span>当前待办</span>
+        <span class="kpi-val" id="tKpiValPending">0</span>
+      </button>
+    </div>
+
+    <div class="split-layout">
+      <aside class="vendor-rail" id="taskVendorRail" aria-label="按任务渠道筛选">
+        <div class="rail-head">
+          <span>任务渠道</span>
+          <span class="tnum" id="taskRailTotal"></span>
+        </div>
+        <div class="rail-list" id="taskRailList"></div>
+        <div class="rail-foot" id="taskRailFoot">
+          <div class="task-rail-note">仅展示已挂载任务模块的渠道；无任务渠道已自动隔离，每日签到请前往「账号」页。</div>
+        </div>
+      </aside>
+
+      <div class="workspace-card">
+        <div class="workspace-head">
+          <div class="workspace-title">
+            <h2 id="taskWorkspaceTitle">任务中心</h2>
+            <span class="muted" id="taskSummaryText">模块化活动任务 · 按渠道与能力自动隔离</span>
+            <button type="button" class="act xs subtle" id="btnResetTaskScope" hidden>返回全部</button>
+          </div>
+          <div class="pill accent" id="queueProgress" hidden></div>
+        </div>
+
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <button type="button" class="act primary" id="btnAutoAll">
+              <svg class="btn-ico action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#action-icon-automate"/></svg>
+              <span class="btn-label">一键做任务</span>
+            </button>
+            <button type="button" class="act" id="btnScan">
+              <svg class="btn-ico action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#action-icon-scan"/></svg>
+              <span class="btn-label">扫描待办</span>
+            </button>
+            <button type="button" class="act" id="btnRunQueue">
+              <svg class="btn-ico action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#action-icon-queue"/></svg>
+              <span class="btn-label">执行待办队列</span>
+            </button>
+            <label class="muted" style="font-size:12.5px">并发 <input type="number" id="queueConc" value="1" min="1" max="4" class="field-num"></label>
+          </div>
+          <span class="spacer"></span>
+          <div class="filter-pills" id="taskFilterPills" hidden>
+            <button type="button" class="fpill active" data-tfilter="all">全部账号</button>
+            <button type="button" class="fpill" data-tfilter="pending">仅看有待办</button>
+            <button type="button" class="fpill" data-tfilter="none">无待办</button>
+            <button type="button" class="fpill" data-tfilter="error">有错误</button>
+          </div>
+        </div>
+
+        <div class="task-section">
+          <div class="task-section-head">
+            <h3>已挂载任务模块</h3>
+            <span class="muted" id="taskModulesMeta">正在读取已注册模块…</span>
+          </div>
+          <div class="task-mod-grid" id="taskModulesGrid"></div>
+        </div>
+
+        <div class="task-section">
+          <div class="task-section-head">
+            <h3>待办扫描与执行队列</h3>
+            <span class="muted" id="taskScanMeta">点击「扫描待办」实时探测可扫描渠道</span>
+          </div>
+          <div class="hint">仅挂载了「可扫描」协议的模块参与待办扫描；队列按账号内串行、账号间并发调度，已达标项自动跳过。无待办账号默认折叠。</div>
+          <div id="scans"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 视图 4：运行期设置 ==================== -->
+  <section id="view-settings" class="view">
+    <div class="settings-wrap">
+      <div class="card settings-group">
+        <div class="settings-group-title">自动化与定时任务</div>
+        <div class="settings">
+          <div class="setting">
+            <div class="setting-text">
+              <label class="setting-title" for="setAutoCheckin">每日自动签到</label>
+              <div class="setting-desc">按整点排程：分钟不为 0 时顺延到下一整点，不会早于该时刻执行。</div>
+            </div>
+            <div class="setting-ctl">
+              <input type="text" id="setCheckinAt" placeholder="10:00" class="field-time mono" aria-label="执行时间" title="按整点排程：分钟不为 0 时顺延到下一整点，不会早于该时刻执行">
+              <input type="checkbox" class="switch" id="setAutoCheckin" aria-label="每日自动签到">
+            </div>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <label class="setting-title" for="setAutoTasks">签到后自动跑后续任务</label>
+              <div class="setting-desc">签到后执行已接入联动排程的任务，例如连登奖励。</div>
+            </div>
+            <div class="setting-ctl">
+              <input type="checkbox" class="switch" id="setAutoTasks" aria-label="签到后自动跑后续任务">
+            </div>
+          </div>
+        </div>
+        <details class="fold" id="scheduleFold">
+          <summary>高级任务排程（按任务类型自定义整点小时）</summary>
+          <div id="taskSchedule"></div>
+        </details>
+      </div>
+
+      <div class="card settings-group">
+        <div class="settings-group-title">路由与模型行为</div>
+        <div class="settings">
+          <div class="setting">
+            <div class="setting-text">
+              <label class="setting-title" for="setPromptMode">提示词防御模式</label>
+              <div class="setting-desc">控制插件如何处理客户端发来的系统提示词。</div>
+            </div>
+            <div class="setting-ctl">
+              <select id="setPromptMode">
+                <option value="passthrough">透传（保持客户端原始提示词）</option>
+                <option value="custom">替换（剥离特征提示词，注入纯净提示词）</option>
+                <option value="append">追加（文末追加安全指引）</option>
+              </select>
+            </div>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <label class="setting-title" for="setModelNameTag">模型名渠道标识</label>
+              <div class="setting-desc">为对外模型名自动添加渠道前缀或后缀；保存后会立即重载宿主模型注册表。</div>
+            </div>
+            <div class="setting-ctl">
+              <select id="setModelNameTag">
+                <option value="off">关闭（模型名保持原样）</option>
+                <option value="prefix">前缀（如 zcodeglobal-GLM-5.3）</option>
+                <option value="suffix">后缀（如 GLM-5.3-zcodeglobal）</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-foot">
+        <div class="settings-foot-left">
+          <button type="button" class="act primary" id="btnSaveSettings">保存设置</button>
+          <span class="pill warn" id="unsavedBadge" hidden>有未保存的更改</span>
+        </div>
+        <div id="scheduleInfo" class="hint"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 视图 5：运行日志 ==================== -->
+  <section id="view-logs" class="view">
+    <div class="workspace-card">
+      <div class="workspace-head">
+        <div class="workspace-title">
+          <h2>运行日志</h2>
+          <span class="muted" id="logCount"></span>
+        </div>
+        <div class="toolbar-group">
+          <button type="button" class="act" id="btnLogs">刷新</button>
+          <label class="muted" style="font-size:12.5px"><input type="checkbox" class="switch sm" id="autoLogs"> 自动刷新</label>
+          <button type="button" class="act subtle" id="btnCopyLogs">复制</button>
+          <button type="button" class="act subtle" id="btnClearLogs">清空显示</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="filter-pills" id="logLevelPills">
+          <button type="button" class="fpill active" data-level="ALL">全部</button>
+          <button type="button" class="fpill" data-level="INFO">INFO</button>
+          <button type="button" class="fpill" data-level="WARN">WARN</button>
+          <button type="button" class="fpill" data-level="ERROR">ERROR</button>
+          <button type="button" class="fpill" data-level="DEBUG">DEBUG</button>
+        </div>
+        <span class="spacer"></span>
+        <label class="search">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="M13.5 13.5L17 17" stroke-linecap="round"/></svg>
+          <span class="sr-only">过滤日志</span>
+          <input type="text" id="logFilter" placeholder="过滤日志关键字">
+          <span class="search-kbd">/</span>
+          <button type="button" class="search-clear" id="btnClearLogFilter" aria-label="清空过滤">×</button>
+        </label>
+      </div>
+      <div class="logbox" id="logs"></div>
+    </div>
+  </section>
+</main>
+
+<!-- 右侧滑出账号详情与签到历史抽屉 -->
+<div class="drawer-backdrop" id="accountDrawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="drawer-panel">
+    <div class="drawer-head">
+      <div style="min-width:0">
+        <h2 class="drawer-title" id="drawerTitle">账号详情</h2>
+        <div class="drawer-sub" id="drawerSub"></div>
+      </div>
+      <button type="button" class="icon-btn" id="btnCloseDrawer" aria-label="关闭详情">✕</button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </div>
+</div>
+
+<!-- 套餐领取弹窗 -->
+<div class="modal" id="claimModal" style="display:none" hidden role="dialog" aria-modal="true" aria-labelledby="claimTitle">
+  <div class="modal-box">
+    <h2 id="claimTitle">套餐领取</h2>
+    <div id="claimPlans" class="muted">正在查询可领套餐…</div>
+    <div class="claim-captcha" id="claimCaptcha"></div>
+    <button id="claimCaptchaBtn" type="button" hidden></button>
+    <div class="hint" id="claimHint"></div>
+    <details id="claimPasteBox" hidden>
+      <summary>验证码脚本加载失败？改用粘贴验证码参数</summary>
+      <input type="text" id="claimVerifyParam" placeholder="粘贴 captchaVerifyParam" class="field-wide">
+    </details>
+    <div class="claim-row">
+      <button class="act" id="btnClaimCancel" type="button">取消</button>
+      <button class="act primary" id="btnClaimConfirm" type="button" disabled>确认领取</button>
+    </div>
+  </div>
+</div>
+
+<!-- 独立管理密钥登录弹窗 -->
+<div class="modal auth-modal" id="keyBox" hidden role="dialog" aria-modal="true" aria-labelledby="keyModalTitle">
+  <div class="auth-modal-box">
+    <div class="auth-head">
+      <span class="auth-emblem" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l7 3v5c0 4.5-3 8.4-7 10-4-1.6-7-5.5-7-10V6l7-3z"/>
+          <circle cx="12" cy="11" r="2"/>
+          <path d="M12 13v2.5"/>
+        </svg>
+      </span>
+      <div class="auth-head-text">
+        <div class="auth-title-row">
+          <h2 id="keyModalTitle">__PLUGIN_NAME__ 管理验证</h2>
+          <span class="ver-badge" id="keyModalVer"></span>
+        </div>
+        <div class="auth-sub">请输入 CPA 管理密钥以解锁账号、模型与任务控制台</div>
+      </div>
+    </div>
+
+    <div class="auth-status-bar" id="keyStatusBar">
+      <span class="auth-status-dot" aria-hidden="true"></span>
+      <span id="keyStatus">等待输入管理密钥</span>
+    </div>
+
+    <div class="auth-field">
+      <label class="auth-field-label" for="keyInput">
+        <span>管理密钥</span>
+        <code>remote-management.secret-key</code>
+      </label>
+      <div class="auth-input-wrap">
+        <svg class="auth-input-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="7.5" cy="10" r="3.5"/>
+          <path d="M11 10h6.5M15 10v2.5M17.5 10v2"/>
+        </svg>
+        <input type="password" id="keyInput" placeholder="输入 CPA 管理密钥" autocomplete="off" spellcheck="false">
+        <button type="button" class="auth-eye-btn" id="btnToggleKeyVis" aria-label="显示或隐藏管理密钥" aria-pressed="false" title="显示 / 隐藏密钥">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 10s2.8-4.8 7.5-4.8S17.5 10 17.5 10s-2.8 4.8-7.5 4.8S2.5 10 2.5 10z"/>
+            <circle cx="10" cy="10" r="2.2"/>
+            <path class="eye-slash" d="M3.5 16.5L16.5 3.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="auth-options">
+      <label class="auth-remember">
+        <input type="checkbox" id="chkRememberKey" checked>
+        <span>记住管理密钥（下次自动登录，仅存本机浏览器）</span>
+      </label>
+    </div>
+
+    <div class="auth-actions">
+      <button type="button" class="act primary auth-submit-btn" id="btnUseKey">
+        <svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="9" width="12" height="8" rx="2"/>
+          <path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>
+        </svg>
+        <span class="btn-label">验证并进入面板</span>
+      </button>
+      <button type="button" class="act subtle auth-reuse-btn" id="btnReusePanelKey" hidden>
+        <svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 10a6 6 0 1 1 1.7 4.2"/><path d="M4 14v-4h4"/>
+        </svg>
+        <span>一键复用 CPA 主面板已登录密钥</span>
+      </button>
+    </div>
+
+    <div class="auth-foot">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="10" cy="10" r="7.5"/>
+        <path d="M10 9v4.5M10 6.5h.01"/>
+      </svg>
+      <span>密钥仅用于与同源 CPA 管理接口鉴权，不上传任何第三方；若校验失败将自动冷却 10 秒以防触发 CPA IP 限流。</span>
+    </div>
+  </div>
+</div>
+
+<!-- 全局悬浮提示气泡 / 点击弹出异常详情卡片（body 级固定定位） -->
+<div class="info-popover" id="infoPopover" role="dialog" aria-modal="false" hidden></div>

@@ -17,7 +17,10 @@ import (
 
 // 本文件用静态检查守住分层边界、供应商目录白名单与测试布局。
 
-const vendorImportPrefix = "freetier2api-plugin/internal/vendors/"
+const (
+	vendorImportPrefix  = "cpa-tierbridge2api-plugin/internal/vendors/"
+	taskModImportPrefix = "cpa-tierbridge2api-plugin/internal/taskmods"
+)
 
 func TestNoCrossVendorImports(t *testing.T) {
 	root := filepath.Join("..", "internal", "vendors")
@@ -95,6 +98,28 @@ func fileImports(t *testing.T, path string) []string {
 	return out
 }
 
+func TestTaskModulesOnlyRegisteredInCompositionRoot(t *testing.T) {
+	dir := filepath.Join("..", "internal", "app")
+	entries, errRead := os.ReadDir(dir)
+	if errRead != nil {
+		t.Fatalf("read app: %v", errRead)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		if entry.Name() == "taskmods.go" {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		for _, imp := range fileImports(t, path) {
+			if imp == taskModImportPrefix || strings.HasPrefix(imp, taskModImportPrefix+"/") {
+				t.Errorf("%s：只有组合根 taskmods.go 可以直接 import 任务扩展包 internal/taskmods", path)
+			}
+		}
+	}
+}
+
 func TestTaskEngineVendorNeutral(t *testing.T) {
 	dir := filepath.Join("..", "internal", "tasks")
 	entries, errRead := os.ReadDir(dir)
@@ -107,8 +132,11 @@ func TestTaskEngineVendorNeutral(t *testing.T) {
 		}
 		path := filepath.Join(dir, entry.Name())
 		for _, imp := range fileImports(t, path) {
-			if strings.HasPrefix(imp, vendorImportPrefix) || imp == "freetier2api-plugin/internal/admin" {
-				t.Errorf("%s：任务引擎不得依赖供应商或管理接口（%s）", path, imp)
+			if strings.HasPrefix(imp, vendorImportPrefix) ||
+				imp == "cpa-tierbridge2api-plugin/internal/admin" ||
+				imp == taskModImportPrefix ||
+				strings.HasPrefix(imp, taskModImportPrefix+"/") {
+				t.Errorf("%s：任务引擎不得依赖供应商、任务扩展包或管理接口（%s）", path, imp)
 			}
 		}
 	}
@@ -137,7 +165,7 @@ func TestCoreDoesNotImportUpperLayers(t *testing.T) {
 		}
 		path := filepath.Join("..", "internal", "core", entry.Name())
 		for _, imp := range fileImports(t, path) {
-			if strings.HasPrefix(imp, "freetier2api-plugin/internal/") {
+			if strings.HasPrefix(imp, "cpa-tierbridge2api-plugin/internal/") {
 				t.Errorf("%s：internal/core 只能依赖 cpasdk 与标准库（发现 %s）", path, imp)
 			}
 		}
@@ -190,15 +218,18 @@ type layerRule struct {
 // core（契约）+ hostbridge（宿主通信）+ logger（日志）三者，多一个都不行——
 // 这条规则挡住了 vendor 反向依赖 auth / state / tasks / admin 的所有可能。
 var layerRules = []layerRule{
-	{pkg: "core", forbidden: []string{"admin", "app", "auth", "hostbridge", "logger", "safe", "state", "tasks", "vendors"}},
+	{pkg: "core", forbidden: []string{"admin", "app", "auth", "hostbridge", "logger", "safe", "state", "taskmods", "tasks", "vendors"}},
 	{pkg: "logger"},
 	// safe 只做 panic 恢复与记日志，供各层（含供应商）在协程边界使用。
 	{pkg: "safe", allowlist: []string{"logger"}},
-	{pkg: "state", forbidden: []string{"admin", "app", "auth", "hostbridge", "tasks", "vendors"}},
-	{pkg: "hostbridge", forbidden: []string{"admin", "app", "auth", "state", "tasks", "vendors"}},
-	{pkg: "auth", forbidden: []string{"admin", "app", "tasks", "vendors"}},
-	{pkg: "tasks", forbidden: []string{"admin", "app", "vendors"}},
-	{pkg: "admin", forbidden: []string{"app"}},
+	{pkg: "state", forbidden: []string{"admin", "app", "auth", "hostbridge", "taskmods", "tasks", "vendors"}},
+	{pkg: "hostbridge", forbidden: []string{"admin", "app", "auth", "state", "taskmods", "tasks", "vendors"}},
+	{pkg: "auth", forbidden: []string{"admin", "app", "taskmods", "tasks", "vendors"}},
+	{pkg: "tasks", forbidden: []string{"admin", "app", "taskmods", "vendors"}},
+	{pkg: "admin", forbidden: []string{"app", "taskmods"}},
+	// taskmods 仅封装可插拔活动/任务逻辑：允许依赖 core、对应 vendors 与基础设施，
+	// 禁止反向耦合引擎（tasks）、管理层（admin）、状态存储（state）与组合根（app）。
+	{pkg: "taskmods", forbidden: []string{"admin", "app", "auth", "state", "tasks"}},
 	{pkg: "vendors/autoclaw", allowlist: []string{"core", "hostbridge", "logger", "safe"}},
 	{pkg: "vendors/cline", allowlist: []string{"core", "hostbridge", "logger", "safe"}},
 	{pkg: "vendors/codearts", allowlist: []string{"core", "hostbridge", "logger", "safe"}},
@@ -219,7 +250,8 @@ var layerRules = []layerRule{
 // 白名单会先把它拦下来，提示补规则，而不是让它静默进入依赖图。
 var internalPackages = map[string]bool{
 	"admin": true, "app": true, "auth": true, "core": true,
-	"hostbridge": true, "logger": true, "safe": true, "state": true, "tasks": true, "vendors": true,
+	"hostbridge": true, "logger": true, "safe": true, "state": true,
+	"taskmods": true, "tasks": true, "vendors": true,
 }
 
 func TestInternalPackageAllowlist(t *testing.T) {
@@ -287,10 +319,10 @@ func TestLayerBoundaries(t *testing.T) {
 			}
 			path := filepath.Join(dir, entry.Name())
 			for _, imp := range fileImports(t, path) {
-				if !strings.HasPrefix(imp, "freetier2api-plugin/internal/") {
+				if !strings.HasPrefix(imp, "cpa-tierbridge2api-plugin/internal/") {
 					continue
 				}
-				target := strings.TrimPrefix(imp, "freetier2api-plugin/internal/")
+				target := strings.TrimPrefix(imp, "cpa-tierbridge2api-plugin/internal/")
 				if banned[strings.Split(target, "/")[0]] {
 					t.Errorf("%s：internal/%s 不得依赖 internal/%s", path, rule.pkg, target)
 				}

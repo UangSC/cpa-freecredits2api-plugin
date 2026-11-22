@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 func TestContextOverrideSurvivesRefreshReloadAndReset(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"strings"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // Credential 是归一化后的 MiniMax Code 账号凭证。

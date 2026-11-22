@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"sync"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // UpstreamResponse 是假宿主对一次出站请求的应答。
@@ -291,6 +291,13 @@ func (h *Host) handleAuthGet(payload any) (json.RawMessage, error) {
 	h.mu.Lock()
 	raw, okRaw := h.authJSON[req.AuthIndex]
 	path := h.authPaths[req.AuthIndex]
+	name := ""
+	for _, entry := range h.authFiles {
+		if entry.AuthIndex == req.AuthIndex {
+			name = entry.Name
+			break
+		}
+	}
 	h.mu.Unlock()
 	if !okRaw {
 		return json.RawMessage(`{"auth_index":"` + req.AuthIndex + `","json":null}`), nil
@@ -299,9 +306,10 @@ func (h *Host) handleAuthGet(payload any) (json.RawMessage, error) {
 	// 不能走 []byte 序列化（那会变成 base64，插件侧解不出来）。
 	response := struct {
 		AuthIndex string          `json:"auth_index"`
+		Name      string          `json:"name,omitempty"`
 		Path      string          `json:"path,omitempty"`
 		JSON      json.RawMessage `json:"json"`
-	}{AuthIndex: req.AuthIndex, Path: path, JSON: json.RawMessage(raw)}
+	}{AuthIndex: req.AuthIndex, Name: name, Path: path, JSON: json.RawMessage(raw)}
 	return marshalJSON(response)
 }
 

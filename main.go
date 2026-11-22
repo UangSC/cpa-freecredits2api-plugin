@@ -6,9 +6,9 @@ package main
 import (
 	"net/http"
 
-	"freetier2api-plugin/internal/app"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/safe"
 )
 
 // pluginVersion 由 CI 通过 -ldflags -X main.pluginVersion=<tag> 注入。

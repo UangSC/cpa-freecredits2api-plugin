@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"cpa-tierbridge2api-plugin/internal/safe"
 )
 
 // autoAllTimeout 是后台「一键完成」的总时限。
@@ -27,6 +29,13 @@ type autoAllJob struct {
 	payload  map[string]any
 }
 
+// AutoAllOptions 是后台一键任务的可选过滤范围（均为空表示全部具备任务模块的账号）。
+type AutoAllOptions struct {
+	AccountIDs []string `json:"account_ids,omitempty"`
+	VendorIDs  []string `json:"vendor_ids,omitempty"`
+	ModuleIDs  []string `json:"module_ids,omitempty"`
+}
+
 // StartAutoAll 在后台执行一键完成，立即返回任务编号；进度用 AutoAllStatus 轮询。
 //
 // 同一时刻只允许一个后台任务：重复点击返回 409 和正在执行的那个编号，
@@ -37,6 +46,11 @@ type autoAllJob struct {
 // scope，之后再用它调 host.auth.list / host.http.do 会被拒
 // （host callback ID is not open），表现成「一键完成刚启动就失败」。
 func (s *Service) StartAutoAll(targets []string) (map[string]any, int) {
+	return s.StartAutoAllFiltered(AutoAllOptions{AccountIDs: targets})
+}
+
+// StartAutoAllFiltered 按渠道、模块或账号范围在后台执行一键完成。
+func (s *Service) StartAutoAllFiltered(opts AutoAllOptions) (map[string]any, int) {
 	job := s.autoAll
 	job.mu.Lock()
 	if job.running {
@@ -57,7 +71,20 @@ func (s *Service) StartAutoAll(targets []string) (map[string]any, int) {
 	s.trackJob(func(parent context.Context) {
 		ctx, cancel := context.WithTimeout(parent, autoAllTimeout)
 		defer cancel()
-		payload := s.runAutoAllTargets(ctx, "", targets, func(done, total int) {
+		var payload map[string]any
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				payload = map[string]any{"ok": false, "message": safe.NewPanicError("auto all", recovered).Error()}
+			}
+			job.mu.Lock()
+			if job.seq == seq {
+				job.running = false
+				job.finished = s.deps.Now()
+				job.payload = payload
+			}
+			job.mu.Unlock()
+		}()
+		payload = s.runAutoAllWithOptions(ctx, "", opts, func(done, total int) {
 			job.mu.Lock()
 			if job.seq == seq {
 				job.progress = done
@@ -65,13 +92,6 @@ func (s *Service) StartAutoAll(targets []string) (map[string]any, int) {
 			}
 			job.mu.Unlock()
 		})
-		job.mu.Lock()
-		if job.seq == seq {
-			job.running = false
-			job.finished = s.deps.Now()
-			job.payload = payload
-		}
-		job.mu.Unlock()
 	})
 	return map[string]any{"ok": true, "started": true, "seq": seq}, http.StatusOK
 }

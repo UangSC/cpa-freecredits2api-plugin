@@ -8,9 +8,48 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/tests/testhost"
 )
+
+func TestExecuteDuringEndpointReconfigure(t *testing.T) {
+	host := testhost.New()
+	host.SetUpstream(func(method, url, body string) testhost.UpstreamResponse {
+		switch url {
+		case "https://first.test/v1/chat/completions", "https://second.test/v1/chat/completions":
+			return testhost.UpstreamResponse{Status: http.StatusOK, Body: `{"id":"stub","choices":[]}`}
+		default:
+			return testhost.UpstreamResponse{Status: http.StatusBadRequest, Body: `{"error":{"message":"invalid configured endpoint"}}`}
+		}
+	})
+	hostbridge.Configure(host.Call)
+	t.Cleanup(func() { hostbridge.Configure(nil) })
+	v := Instances(core.Env{})[0].(*adapter)
+	cred, errParse := v.Parse([]byte(`{"api_key":"test-key"}`), "tokenplan-test.json")
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	configs := []map[string]string{
+		{"tokenplan_base_url": "https://first.test/v1"},
+		{"tokenplan_base_url": "https://second.test/v1"},
+	}
+	v.Configure(core.Settings{}, configs[0])
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		for i := 0; i < 200; i++ {
+			v.Configure(core.Settings{}, configs[i%len(configs)])
+		}
+	}()
+	t.Cleanup(func() { <-finished })
+	request := &core.ExecuteRequest{Model: "intern-s2", Payload: []byte(`{"messages":[]}`)}
+	for i := 0; i < 30; i++ {
+		if _, errExecute := v.Execute(context.Background(), cred, request); errExecute != nil {
+			t.Fatalf("热更新时执行失败: %v", errExecute)
+		}
+	}
+}
 
 func TestCredentialOwnershipAndHeaderValidation(t *testing.T) {
 	for _, raw := range []string{`{"api_key":"bad\r\nInjected: value"}`, `{"vendor":"inkstone","api_key":"key"}`, `{"token":"client-sso"}`, `null`} {

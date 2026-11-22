@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 // CheckinTrigger 标识一次签到是谁触发的（写进历史的 trigger 字段）。
@@ -69,7 +69,11 @@ func (s *Service) Checkin(ctx context.Context, vendor core.Vendor, credential *c
 		// 「该账号正在执行其它任务」这种误导性的锁冲突文案。
 		return nil, fmt.Errorf("账号缺少文件标识，无法执行签到")
 	}
-	if !s.tryLockAccount(uid) {
+	if trigger == CheckinTriggerSchedule {
+		if errLock := s.lockAccount(ctx, uid); errLock != nil {
+			return nil, errLock
+		}
+	} else if !s.tryLockAccount(uid) {
 		return nil, fmt.Errorf("该账号正在执行其它任务，请稍后再试")
 	}
 	defer s.unlockAccount(uid)

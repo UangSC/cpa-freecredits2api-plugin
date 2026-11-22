@@ -11,20 +11,22 @@ import (
 	"sync/atomic"
 	"time"
 
-	"freetier2api-plugin/internal/admin"
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/internal/admin"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
 // DefaultVersion 是未注入发行版号时的版本。
-const DefaultVersion = "0.1.50-uangsc.19"
+const DefaultVersion = "v0.2.0"
 
 // Options 是 App 的构造参数。
 type Options struct {
 	Version   string
 	Factories []core.VendorFactory
+	// TaskModules 可选的任务/活动扩展模块列表；为 nil 时按已注册供应商加载 BuiltinTaskModules。
+	TaskModules []core.TaskModule
 	// Host 仅用于测试/嵌入；为空时使用内部 hostBridge。
 	Host core.Host
 	// Now 允许测试注入时钟；为空时使用 time.Now。
@@ -36,15 +38,14 @@ type App struct {
 	version string
 	now     func() time.Time
 
-	host     core.Host
-	registry *core.Registry
-	logins   *auth.SessionRegistry
+	host         core.Host
+	registry     *core.Registry
+	taskRegistry *core.TaskRegistry
+	logins       *auth.SessionRegistry
 
-	cfg    atomic.Pointer[admin.PluginConfig]
+	cfg    atomic.Pointer[runtimeConfig]
 	store  *state.Store
 	models *admin.Catalog
-
-	machineSalt string
 
 	lifecycleMu sync.Mutex
 	registered  bool
@@ -104,10 +105,21 @@ func New(opts Options) (*App, error) {
 	}
 	a.models = admin.NewCatalog(a.store, a.registry)
 	a.pool = auth.NewPool(a.registry, a.resolveVendorCredential)
+	a.taskRegistry = core.NewTaskRegistry()
+	taskMods := opts.TaskModules
+	if taskMods == nil {
+		taskMods = BuiltinTaskModules(a.registry)
+	}
+	for _, mod := range taskMods {
+		if errRegister := a.taskRegistry.Register(mod); errRegister != nil {
+			return nil, errRegister
+		}
+	}
 	a.tasks = tasks.New(taskDeps{app: a})
+	a.tasks.SetModules(a.taskRegistry)
 	a.admin = admin.New(adminDeps{app: a}, a.registry, a.pool, a.tasks)
 	defaults := defaultPluginConfig()
-	a.storeConfig(defaults)
+	a.cfg.Store(&runtimeConfig{config: defaults})
 	a.models.Configure(admin.ModelSettings{
 		EnabledRealms:    defaults.EnabledRealms,
 		ExtraModels:      defaults.ExtraModels,
@@ -131,6 +143,9 @@ func (a *App) Version() string { return a.version }
 
 // Registry 返回供应商注册表。
 func (a *App) Registry() *core.Registry { return a.registry }
+
+// TaskRegistry 返回任务/活动扩展模块注册表。
+func (a *App) TaskRegistry() *core.TaskRegistry { return a.taskRegistry }
 
 // Model 返回模型管理器。
 func (a *App) Model() *admin.Catalog { return a.models }

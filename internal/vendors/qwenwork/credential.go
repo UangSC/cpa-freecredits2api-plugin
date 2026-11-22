@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 const (

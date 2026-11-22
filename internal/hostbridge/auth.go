@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // ---- 凭证写回（宿主边界） ----
@@ -102,7 +102,7 @@ func AlignCredentialUID(storageJSON []byte, fileName string) []byte {
 // 兜底依据：这些凭证文件的文件名仍是 workbuddy-*.json（本插件的命名约定），
 // 按名字也属于本插件，因此一并收下——否则用户的合法账号会在页面上凭空消失。
 func ListAuths(ctx context.Context, callbackID string, registry *core.Registry) ([]core.HostAuth, error) {
-	raw, errCall := Call(callbackID, pluginabi.MethodHostAuthList, map[string]any{})
+	raw, errCall := CallCtx(WithCallbackID(ctx, callbackID), pluginabi.MethodHostAuthList, map[string]any{})
 	if errCall != nil {
 		return nil, fmt.Errorf("host.auth.list: %w", errCall)
 	}
@@ -326,54 +326,60 @@ func fileNameBelongsToPlugin(name string, registry *core.Registry) bool {
 	return false
 }
 
-// fetchAuthJSON 按 auth_index 取回凭证 JSON。
+// FetchAuth 按 auth_index 取回凭证 JSON 和宿主登记的文件名。
 //
 // 宿主的 host.auth.get 只认 auth_index（按 id 查会失败），
 // 因此调用方若是从 id 出发，必须先经列表把 id 映射成 index。
-func FetchAuthJSON(ctx context.Context, callbackID, authID string, registry *core.Registry) ([]byte, error) {
+func FetchAuth(ctx context.Context, callbackID, authID string, registry *core.Registry) (pluginapi.HostAuthGetResponse, error) {
 	index := strings.TrimSpace(authID)
 	if index == "" {
-		return nil, fmt.Errorf("auth id is empty")
+		return pluginapi.HostAuthGetResponse{}, fmt.Errorf("auth id is empty")
 	}
 	// 先直接按 index 查（多数调用方传进来的就是 index）。
-	if raw, okFound := AuthJSON(ctx, callbackID, index); okFound {
-		return raw, nil
+	if response, okFound := authDetails(ctx, callbackID, index); okFound {
+		return response, nil
 	}
 	// 回退：把 id 映射成 index 再查。
 	entries, errList := ListAuths(ctx, callbackID, registry)
 	if errList != nil {
-		return nil, errList
+		return pluginapi.HostAuthGetResponse{}, errList
 	}
 	for _, entry := range entries {
 		if entry.ID != index && entry.Name != index {
 			continue
 		}
-		if raw, okFound := AuthJSON(ctx, callbackID, entry.AuthIndex); okFound {
-			return raw, nil
+		if response, okFound := authDetails(ctx, callbackID, entry.AuthIndex); okFound {
+			response.Name = core.FirstNonEmpty(response.Name, entry.Name)
+			return response, nil
 		}
 	}
-	return nil, fmt.Errorf("auth %s not found", authID)
+	return pluginapi.HostAuthGetResponse{}, fmt.Errorf("auth %s not found", authID)
 }
 
-// getAuthJSONAndPathByIndex 按 auth_index 取凭证 JSON 和物理文件路径。
-func AuthJSONAndPath(ctx context.Context, callbackID, authIndex string) ([]byte, string, bool) {
+func authDetails(ctx context.Context, callbackID, authIndex string) (pluginapi.HostAuthGetResponse, bool) {
 	trimmed := strings.TrimSpace(authIndex)
 	if trimmed == "" {
-		return nil, "", false
+		return pluginapi.HostAuthGetResponse{}, false
 	}
-	raw, errCall := Call(callbackID, pluginabi.MethodHostAuthGet, pluginapi.HostAuthGetRequest{AuthIndex: trimmed})
+	raw, errCall := CallCtx(WithCallbackID(ctx, callbackID), pluginabi.MethodHostAuthGet,
+		pluginapi.HostAuthGetRequest{AuthIndex: trimmed})
 	if errCall != nil {
 		logHostCallFailure(pluginabi.MethodHostAuthGet, errCall)
-		return nil, "", false
+		return pluginapi.HostAuthGetResponse{}, false
 	}
 	var response pluginapi.HostAuthGetResponse
-	if errUnmarshal := json.Unmarshal(raw, &response); errUnmarshal != nil {
-		return nil, "", false
+	if errUnmarshal := json.Unmarshal(raw, &response); errUnmarshal != nil ||
+		len(response.JSON) == 0 || bytes.Equal(response.JSON, []byte("null")) {
+		return pluginapi.HostAuthGetResponse{}, false
 	}
-	if len(response.JSON) == 0 {
-		return nil, "", false
-	}
-	return response.JSON, ResolveAuthPath(response.Path), true
+	response.Path = ResolveAuthPath(response.Path)
+	return response, true
+}
+
+// AuthJSONAndPath 按 auth_index 取凭证 JSON 和物理文件路径。
+func AuthJSONAndPath(ctx context.Context, callbackID, authIndex string) ([]byte, string, bool) {
+	response, ok := authDetails(ctx, callbackID, authIndex)
+	return response.JSON, response.Path, ok
 }
 
 // getAuthJSONByIndex 按 auth_index 取凭证 JSON。

@@ -16,14 +16,14 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
-	"freetier2api-plugin/internal/safe"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
 const (
@@ -54,16 +54,13 @@ type preparedExecution struct {
 	credential    *core.Credential
 	model         string
 	contextLength int64
-	// modelAliased 报告请求命中了别名：出站前需要把请求体里的模型名一并还原。
-	modelAliased bool
 }
 
 // executeRequest 把宿主的执行请求转成供应商无关的形态。
 func (p preparedExecution) executeRequest() *core.ExecuteRequest {
 	payload := p.rpc.Payload
-	if p.modelAliased {
-		// 供应商的对话实现多从请求体读 model（Qoder / Trae 等），别名必须在这里
-		// 一并还原成官方 ID，否则上游收到的是别名。
+	if p.model != p.rpc.Model {
+		// Qoder、Trae 等从请求体获取模型，把兼容前缀、渠道标识和别名还原为官方 ID。
 		payload = rewritePayloadModel(payload, p.model)
 	}
 	return &core.ExecuteRequest{
@@ -137,11 +134,11 @@ func rewritePayloadModel(payload []byte, model string) []byte {
 	if len(payload) == 0 || strings.TrimSpace(model) == "" {
 		return payload
 	}
-	var obj map[string]any
+	var obj map[string]json.RawMessage
 	if errUnmarshal := json.Unmarshal(payload, &obj); errUnmarshal != nil || obj == nil {
 		return payload
 	}
-	obj["model"] = model
+	obj["model"], _ = json.Marshal(model)
 	encoded, errMarshal := json.Marshal(obj)
 	if errMarshal != nil {
 		return payload
@@ -284,14 +281,11 @@ func (a *App) prepareExecution(request []byte) (preparedExecution, error) {
 
 	// 本插件只声明 chat-completions。宿主若送来其它格式，说明双方声明不一致，
 	// 明确报错比静默按错误格式处理更容易定位。
-	if format := strings.TrimSpace(prepared.rpc.Format); format != "" && !isChatFormat(format) {
+	// 优先使用目标协议。SourceFormat 可以是宿主翻译前的客户端协议；
+	// 只有宿主未提供 Format 时才用它推断 Payload 的格式。
+	if format := core.FirstNonEmpty(prepared.rpc.Format, prepared.rpc.SourceFormat); format != "" && !isChatFormat(format) {
 		return prepared, core.NewPluginError("unsupported_format",
 			fmt.Sprintf("unsupported protocol format %q (this plugin only handles %s)", format, formatChatCompletions),
-			http.StatusBadRequest)
-	}
-	if format := strings.TrimSpace(prepared.rpc.SourceFormat); format != "" && !isChatFormat(format) {
-		return prepared, core.NewPluginError("unsupported_format",
-			fmt.Sprintf("unsupported source format %q (this plugin only handles %s)", format, formatChatCompletions),
 			http.StatusBadRequest)
 	}
 
@@ -313,7 +307,6 @@ func (a *App) prepareExecution(request []byte) (preparedExecution, error) {
 	// 客户端请求的是别名时还原成上游官方 ID：禁用校验与出站都用官方 ID，
 	// 因此还原必须发生在两者之前。
 	prepared.model = a.resolveOutboundModel(vendor.ID(), bareModel)
-	prepared.modelAliased = prepared.model != bareModel
 	prepared.contextLength = a.models.ContextLengthFor(vendor.ID(), prepared.model)
 
 	// 检查模型是否已被插件配置禁用（禁用键是 vendor:model，跨供应商互不影响）。
@@ -463,21 +456,38 @@ func (a *App) handleQuotaDescribe(request []byte) ([]byte, error) {
 	})
 }
 
+type quotaFetchRPCRequest struct {
+	pluginapi.QuotaFetchRequest
+	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
+type quotaResetRPCRequest struct {
+	pluginapi.QuotaResetRequest
+	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
+// quotaCredentialReference 优先用文件身份解析随请求提交的 JSON，回源时优先用宿主索引查找。
+func quotaCredentialReference(storageJSON []byte, authID, authIndex string) string {
+	if len(storageJSON) != 0 {
+		return core.FirstNonEmpty(authID, authIndex)
+	}
+	return core.FirstNonEmpty(authIndex, authID)
+}
+
 // handleQuotaFetch 查询某个账号的额度。
 //
 // 取数交给凭证所属的供应商：各家的额度接口与归一方式完全不同
 // （WorkBuddy 是积分余额，Qoder 是套餐用量桶）。
 func (a *App) handleQuotaFetch(request []byte) ([]byte, error) {
-	var rpc pluginapi.QuotaFetchRequest
+	var rpc quotaFetchRPCRequest
 	if errDecode := decodeRequest(request, &rpc); errDecode != nil {
 		return nil, core.NewPluginError("invalid_request", errDecode.Error(), http.StatusBadRequest)
 	}
-	ctx := hostbridge.WithCallbackID(context.Background(), "")
-	// 宿主的额度路由**不发 StorageJSON**（只发 AuthIndex/AuthID + 属性），
-	// 因此这里必须能按 index 回源，否则会误报「凭证缺失」。
+	ctx := hostbridge.WithCallbackID(context.Background(), rpc.HostCallbackID)
+	// 部分宿主只发 AuthIndex/AuthID 和属性，需要按索引回源。
 	authID := core.FirstNonEmpty(rpc.AuthIndex, rpc.AuthID)
-	credential, vendor, errResolve := a.resolveVendorCredential(ctx, "", rpc.StorageJSON,
-		authID, rpc.Attributes)
+	credential, vendor, errResolve := a.resolveVendorCredential(ctx, rpc.HostCallbackID, rpc.StorageJSON,
+		quotaCredentialReference(rpc.StorageJSON, rpc.AuthID, rpc.AuthIndex), rpc.Attributes)
 	if errResolve != nil {
 		return nil, errResolve
 	}
@@ -492,7 +502,7 @@ func (a *App) handleQuotaFetch(request []byte) ([]byte, error) {
 	// 1 小时有效期）在宿主面板上会周期性挂 401，而同一时刻控制台刷新却是好的——
 	// 同一批上游、同一批凭证，两条路径的重试策略不该分裂。
 	response, errQuota := queryVendorQuota(ctx, credential, provider, func() *core.Credential {
-		return a.refreshedQuotaCredential(ctx, "", authID, vendor)
+		return a.refreshedQuotaCredential(ctx, rpc.HostCallbackID, authID, vendor)
 	})
 	if errQuota != nil {
 		// 宿主契约里没有「这是上次的读数」这种表达（QuotaFetchResponse 不带
@@ -560,13 +570,13 @@ func (a *App) adoptRefreshedCredential(authID string, credential *core.Credentia
 // 语义由供应商决定：WorkBuddy 的「重置」是签到（CN 签到 / 国际版每日
 // 活跃奖励）；不支持签到的供应商返回明确的不可用说明，而不是假装成功。
 func (a *App) handleQuotaReset(request []byte) ([]byte, error) {
-	var rpc pluginapi.QuotaResetRequest
+	var rpc quotaResetRPCRequest
 	if errDecode := decodeRequest(request, &rpc); errDecode != nil {
 		return nil, core.NewPluginError("invalid_request", errDecode.Error(), http.StatusBadRequest)
 	}
-	ctx := hostbridge.WithCallbackID(context.Background(), "")
-	credential, vendor, errResolve := a.resolveVendorCredential(ctx, "", rpc.StorageJSON,
-		core.FirstNonEmpty(rpc.AuthIndex, rpc.AuthID), rpc.Attributes)
+	ctx := hostbridge.WithCallbackID(context.Background(), rpc.HostCallbackID)
+	credential, vendor, errResolve := a.resolveVendorCredential(ctx, rpc.HostCallbackID, rpc.StorageJSON,
+		quotaCredentialReference(rpc.StorageJSON, rpc.AuthID, rpc.AuthIndex), rpc.Attributes)
 	if errResolve != nil {
 		return nil, errResolve
 	}

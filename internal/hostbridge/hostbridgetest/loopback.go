@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // UseLoopbackHost 把宿主 HTTP 桥换成直连 httptest 的转发器。

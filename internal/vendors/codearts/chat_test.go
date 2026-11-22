@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // TestClampMaxTokens 锁定请求侧的输出上限夹取。

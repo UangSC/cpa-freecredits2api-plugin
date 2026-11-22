@@ -2,7 +2,7 @@ package tasks
 
 // 并发续期的去重语义。
 //
-// 排程保活、控制台「Token 续期」与额度查询遇 401 的重试共用 RefreshAccount。
+// 排程保活、控制台「凭证更新」与额度查询遇 401 的重试共用 RefreshAccount。
 // 三者在续期前各自加载账号，手里是同一份旧凭证；MiniMax 这类刷新会轮换
 // refresh_token 的上游，会让后到的那次拿到 invalid_grant——正常账号被误判成
 // 「需要重新授权」。这里锁定「同一份快照只刷一次、写回一次」。
@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // rotatingVendor 模拟刷新时轮换 token 的上游，并统计刷新次数。

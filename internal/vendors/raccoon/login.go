@@ -38,8 +38,8 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // loginAppName 是授权页上报的客户端名（与官方桌面客户端一致）。

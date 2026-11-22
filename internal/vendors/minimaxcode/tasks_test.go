@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // membershipFixture 是 2026-10-25 实测 get_membership_info 的裁剪响应。

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 const credentialTestExpiry int64 = 2_000_000_000

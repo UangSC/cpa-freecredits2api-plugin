@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 type adapter struct {

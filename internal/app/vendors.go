@@ -3,19 +3,19 @@ package app
 // 本文件是唯一的供应商组合根：新增/删除供应商只改这里的工厂列表。
 
 import (
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/vendors/autoclaw"
-	"freetier2api-plugin/internal/vendors/cline"
-	"freetier2api-plugin/internal/vendors/codearts"
-	"freetier2api-plugin/internal/vendors/minimaxcode"
-	"freetier2api-plugin/internal/vendors/opencodezen"
-	"freetier2api-plugin/internal/vendors/qoder"
-	"freetier2api-plugin/internal/vendors/qwenwork"
-	"freetier2api-plugin/internal/vendors/raccoon"
-	"freetier2api-plugin/internal/vendors/tokenplan"
-	"freetier2api-plugin/internal/vendors/trae"
-	"freetier2api-plugin/internal/vendors/workbuddy"
-	"freetier2api-plugin/internal/vendors/zcode"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/vendors/autoclaw"
+	"cpa-tierbridge2api-plugin/internal/vendors/cline"
+	"cpa-tierbridge2api-plugin/internal/vendors/codearts"
+	"cpa-tierbridge2api-plugin/internal/vendors/minimaxcode"
+	"cpa-tierbridge2api-plugin/internal/vendors/opencodezen"
+	"cpa-tierbridge2api-plugin/internal/vendors/qoder"
+	"cpa-tierbridge2api-plugin/internal/vendors/qwenwork"
+	"cpa-tierbridge2api-plugin/internal/vendors/raccoon"
+	"cpa-tierbridge2api-plugin/internal/vendors/tokenplan"
+	"cpa-tierbridge2api-plugin/internal/vendors/trae"
+	"cpa-tierbridge2api-plugin/internal/vendors/workbuddy"
+	"cpa-tierbridge2api-plugin/internal/vendors/zcode"
 )
 
 // BuiltinFactories 返回内置供应商工厂（顺序即注册顺序）。

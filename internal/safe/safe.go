@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // PanicError 是由 panic 转换来的错误，保留现场方便排查。

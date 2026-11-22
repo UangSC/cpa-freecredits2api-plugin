@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // malformedJSON 是「非空但不合法」的请求体：不能当作空请求继续按默认值执行。

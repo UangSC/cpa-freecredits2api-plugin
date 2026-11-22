@@ -3,7 +3,7 @@ package admin
 import (
 	"strings"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // vendorDescriptor 是供应商的展示描述（供页面下拉与分组用）。
@@ -31,6 +31,12 @@ type vendorDescriptor struct {
 	LoginCaptcha bool `json:"login_captcha"`
 	// LoginVariants 是同一供应商可选的登录变体（如 AutoClaw 的 Zai / Google）。
 	LoginVariants []core.LoginVariant `json:"login_variants,omitempty"`
+	// SupportsTasks 报告该渠道是否挂载了可插拔任务/活动模块（无任务渠道为 false）。
+	SupportsTasks bool `json:"supports_tasks"`
+	// SupportsTaskScan 报告该渠道是否支持任务中心的前置待办扫描。
+	SupportsTaskScan bool `json:"supports_task_scan"`
+	// TaskModules 列出该渠道已挂载的全部任务模块元数据。
+	TaskModules []core.TaskModuleMeta `json:"task_modules,omitempty"`
 }
 
 func (s *Service) buildVendorsPayload() map[string]any {
@@ -70,6 +76,13 @@ func (s *Service) buildVendorsPayload() map[string]any {
 		}
 		if variants, okVariants := core.As[core.LoginVariantProvider](vendor); okVariants {
 			descriptor.LoginVariants = variants.LoginVariants()
+		}
+		if s.tasks != nil {
+			if modReg := s.tasks.Modules(); modReg != nil {
+				descriptor.TaskModules = modReg.MetasForVendor(vendor.ID())
+				descriptor.SupportsTasks = modReg.VendorHasTasks(vendor.ID())
+				descriptor.SupportsTaskScan = modReg.VendorSupportsScan(vendor.ID())
+			}
 		}
 		vendors = append(vendors, descriptor)
 	}

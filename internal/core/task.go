@@ -54,9 +54,13 @@ const (
 // TaskItem 是一条待办任务（扫描结果）。
 type TaskItem struct {
 	Kind string `json:"kind"`
-	Code string `json:"code"`
+	// ModuleID 是产出该条待办的任务扩展模块 ID（为空表示兼容旧扫描实现）。
+	ModuleID string `json:"module_id,omitempty"`
+	// KindLabel 是该任务类别的可读展示名，供前端直接展示而无需硬编码类别文案。
+	KindLabel string `json:"kind_label,omitempty"`
+	Code      string `json:"code"`
 	// RunCode 非空时表示这是一条聚合任务：队列只入队一次，并以此任务码执行。
-	// 用于把多个同类待办（例如开学季活动）合并为一次供应商调用。
+	// 用于把多个同类待办（例如同一活动下的多项子任务）合并为一次调用。
 	RunCode  string `json:"run_code,omitempty"`
 	Title    string `json:"title"`
 	Current  int64  `json:"current"`

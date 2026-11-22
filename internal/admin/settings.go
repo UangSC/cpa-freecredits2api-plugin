@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
 type settingsUpdateRequest struct {
@@ -48,11 +49,14 @@ func (s *Service) handleSettingsRequest(req pluginapi.ManagementRequest) plugina
 				"固定签到时刻格式应为 HH:MM（24 小时制）", http.StatusBadRequest))
 		}
 	}
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+
 	changed := map[string]any{}
 	// registryDirty 表示本次请求改变了对外模型 ID 的生效值：控制台据此立即
 	// 触发宿主配置重载（与别名/禁用同一条通道），把模型注册表重建出来。
 	registryDirty := false
-	s.deps.MutateState(func(current *state.State) {
+	if errSave := s.deps.SaveStateChange(func(current *state.State) {
 		if body.AutoCheckin != nil {
 			current.AutoCheckin = body.AutoCheckin
 			changed["auto_checkin"] = *body.AutoCheckin
@@ -94,7 +98,11 @@ func (s *Service) handleSettingsRequest(req pluginapi.ManagementRequest) plugina
 			if _, known := s.tasks.Catalog().SpecByKind(kind); !known {
 				continue
 			}
-			current.TaskSchedules[kind] = tasks.NormalizeHours(hours)
+			if normalized := tasks.NormalizeHours(hours); len(normalized) > 0 {
+				current.TaskSchedules[kind] = normalized
+			} else {
+				delete(current.TaskSchedules, kind)
+			}
 			changed["task_schedules"] = current.TaskSchedules
 		}
 		for kind, hours := range map[string][]int{
@@ -109,9 +117,14 @@ func (s *Service) handleSettingsRequest(req pluginapi.ManagementRequest) plugina
 				changed["task_schedules"] = current.TaskSchedules
 			}
 		}
-	})
-	if errReconfigure := s.deps.Reconfigure(); errReconfigure != nil {
-		return ErrorResponse(errReconfigure)
+	}); errSave != nil {
+		logger.Error("save runtime settings failed: %v", errSave)
+		return JSONResponse(http.StatusInternalServerError, map[string]any{
+			"ok": false, "error": "设置写盘失败，原设置已保留，请检查状态目录权限和磁盘空间。",
+		})
+	}
+	if body.PromptMode != nil || body.ModelNameTag != nil {
+		s.deps.ApplyRuntimeSettings()
 	}
 	s.tasks.Poke()
 	return JSONResponse(http.StatusOK, map[string]any{
@@ -157,16 +170,25 @@ func normalizeModelNameTagPointer(input *string) (string, error) {
 // settingsView 是 /status 的 settings 载荷：任务引擎的可读设置 + 提示词过滤现状。
 func (s *Service) settingsView() map[string]any {
 	settings := s.tasks.EffectiveSettings()
-	settings[PromptModeKey] = EffectivePromptMode(s.deps.Config(), s.deps.State().PromptMode)
-	settings[ModelNameTagKey] = EffectiveModelNameTag(s.deps.Config(), s.deps.State().ModelNameTag)
+	current := s.deps.State()
+	cfg := s.deps.Config()
+	settings[PromptModeKey] = EffectivePromptMode(cfg, current.PromptMode)
+	settings[ModelNameTagKey] = EffectiveModelNameTag(cfg, current.ModelNameTag)
+	overrides := make(map[string][]int, len(current.TaskSchedules))
+	for kind, hours := range current.TaskSchedules {
+		if _, known := s.tasks.Catalog().SpecByKind(kind); known && len(hours) > 0 {
+			overrides[kind] = hours
+		}
+	}
+	settings["task_schedule_overrides"] = overrides
 	return settings
 }
 
 // handleScheduledRun 手动触发一个定时任务。
-func (s *Service) handleScheduledRun(_ pluginapi.ManagementRequest, kind string) pluginapi.ManagementResponse {
-	s.tasks.RunAsync(kind)
+func (s *Service) handleScheduledRun(route tasks.ManualRoute) pluginapi.ManagementResponse {
+	s.tasks.RunManual(route)
 	return JSONResponse(http.StatusOK, map[string]any{
-		"ok": true, "started": true, "task": kind,
+		"ok": true, "started": true, "task": route.Kind,
 		"message": "任务已在后台开始执行，进度见插件日志",
 	})
 }

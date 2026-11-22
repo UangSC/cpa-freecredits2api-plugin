@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	authpkg "freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	authpkg "cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // 本文件是套餐领取的两个管理端点：打开弹窗（实时预览）与提交领取。

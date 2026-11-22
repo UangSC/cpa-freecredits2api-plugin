@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"freetier2api-plugin/internal/hostbridge/hostbridgetest"
+	"cpa-tierbridge2api-plugin/internal/hostbridge/hostbridgetest"
 )
 
 // TestApplyGrantHeadersUsesDesktopEnum 锁住登录奖励接口的平台枚举与组织头。

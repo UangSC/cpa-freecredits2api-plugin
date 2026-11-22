@@ -13,16 +13,21 @@ import (
 	"path/filepath"
 	"strings"
 
-	"freetier2api-plugin/internal/admin"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
-	"freetier2api-plugin/internal/state"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/internal/admin"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
 type pluginConfig = admin.PluginConfig
 
 type pluginState = state.State
+
+type runtimeConfig struct {
+	config      pluginConfig
+	machineSalt string
+}
 
 func defaultPluginConfig() pluginConfig { return admin.DefaultPluginConfig() }
 
@@ -30,13 +35,15 @@ func defaultStateDir() string { return admin.DefaultStateDir() }
 
 // Config 返回当前生效的配置副本。
 func (a *App) Config() pluginConfig {
+	return a.configSnapshot().config
+}
+
+func (a *App) configSnapshot() runtimeConfig {
 	if cfg := a.cfg.Load(); cfg != nil {
 		return *cfg
 	}
-	return defaultPluginConfig()
+	return runtimeConfig{config: defaultPluginConfig()}
 }
-
-func (a *App) storeConfig(cfg pluginConfig) { a.cfg.Store(&cfg) }
 
 func (a *App) decodeConfig(raw []byte) (pluginConfig, error) {
 	cfg, errDecode := admin.DecodePluginConfig(raw, defaultPluginConfig())
@@ -81,8 +88,22 @@ func hostLogSettings(cfg pluginConfig) logger.HostSinkOptions {
 
 // ApplyConfig 应用配置：初始化日志与状态目录、设置指纹盐、下发供应商配置。
 func (a *App) ApplyConfig(cfg pluginConfig) error {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
+	return a.applyConfig(cfg, false)
+}
+
+// applyConfig 按配置切换状态和供应商设置。调用方持有 lifecycleMu。
+func (a *App) applyConfig(cfg pluginConfig, reloadState bool) error {
 	if errDir := ensureStateDir(cfg); errDir != nil {
 		return errDir
+	}
+	salt, errSalt := a.ensureMachineSalt(cfg)
+	if errSalt != nil {
+		return errSalt
+	}
+	if a.Config().StateDir != cfg.StateDir {
+		a.store.Flush()
 	}
 	logger.SetLevel(cfg.LogLevel)
 	if errLog := logger.InitFile(cfg.LogToFile, filepath.Join(cfg.StateDir, "logs")); errLog != nil {
@@ -90,12 +111,12 @@ func (a *App) ApplyConfig(cfg pluginConfig) error {
 	}
 	logger.InitHostSink(hostLogSettings(cfg))
 	a.store.Configure(cfg.StateDir)
-	salt, errSalt := a.ensureMachineSalt(cfg)
-	if errSalt != nil {
-		return errSalt
+	if reloadState {
+		if _, errState := a.store.Load(); errState != nil {
+			logger.Error("load state failed: %v", errState)
+		}
 	}
-	a.machineSalt = salt
-	a.storeConfig(cfg)
+	a.cfg.Store(&runtimeConfig{config: cfg, machineSalt: salt})
 	a.models.Configure(admin.ModelSettings{
 		EnabledRealms:    cfg.EnabledRealms,
 		ExtraModels:      cfg.ExtraModels,

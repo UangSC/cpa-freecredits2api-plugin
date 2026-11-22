@@ -1,12 +1,50 @@
 package qoder
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/tests/testhost"
 )
+
+func TestRunChatCompletionsPreservesHostCallbackAndCancellation(t *testing.T) {
+	host := testhost.New()
+	host.SetUpstream(func(method, url, body string) testhost.UpstreamResponse {
+		return testhost.UpstreamResponse{Status: http.StatusBadRequest, Body: `{"message":"stub rejection"}`}
+	})
+	hostbridge.Configure(host.Call)
+	t.Cleanup(func() { hostbridge.Configure(nil) })
+	session := &SessionContext{}
+	bridge := &Bridge{sess: session, client: NewBearerClient(session), region: RegionCN, templateBase: map[string]any{}}
+	payload := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"test"}]}`)
+	ctx := hostbridge.WithCallbackID(context.Background(), "qoder-nonstream")
+	if errRun := RunChatCompletions(ctx, bridge, payload, io.Discard, 0); errRun == nil {
+		t.Fatal("预期收到模拟上游错误")
+	}
+	ids := host.CallbackIDs()
+	if len(ids) == 0 {
+		t.Fatal("非流式请求未经过宿主 HTTP 桥")
+	}
+	for _, id := range ids {
+		if id != "qoder-nonstream" {
+			t.Fatalf("非流式请求应带宿主作用域，回调 %v", ids)
+		}
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if errRun := RunChatCompletions(cancelled, bridge, payload, io.Discard, 0); !errors.Is(errRun, context.Canceled) {
+		t.Fatalf("已取消的请求返回 %v", errRun)
+	}
+	if got := len(host.CallbackIDs()); got != len(ids) {
+		t.Fatalf("已取消的请求不应打开宿主上游连接，回调总数 %d", got)
+	}
+}
 
 func TestReadQoderResponseBodyLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

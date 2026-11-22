@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/vendors/minimaxcode"
-	"freetier2api-plugin/tests/testhost"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/vendors/minimaxcode"
+	"cpa-tierbridge2api-plugin/tests/testhost"
 )
 
 const (

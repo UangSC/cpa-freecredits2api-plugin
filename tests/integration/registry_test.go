@@ -20,9 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/internal/admin"
-	"freetier2api-plugin/internal/app"
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/admin"
+	"cpa-tierbridge2api-plugin/internal/app"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 var (
@@ -63,6 +63,7 @@ func TestRegistryManifestIsValid(t *testing.T) {
 	if len(manifest.Plugins) == 0 {
 		t.Fatal("registry must declare at least one plugin")
 	}
+	metadata := app.MustNew(app.Options{}).Registration().Metadata
 
 	for _, entry := range manifest.Plugins {
 		if entry.ID != app.PluginID {
@@ -80,6 +81,10 @@ func TestRegistryManifestIsValid(t *testing.T) {
 		}
 		if !githubRepositoryRe.MatchString(entry.Repository) {
 			t.Fatalf("repository %q must be https://github.com/{owner}/{repo}", entry.Repository)
+		}
+		if entry.Name != metadata.Name || entry.Repository != metadata.GitHubRepository {
+			t.Fatalf("registry identity = %q / %q, runtime metadata = %q / %q",
+				entry.Name, entry.Repository, metadata.Name, metadata.GitHubRepository)
 		}
 		if entry.Version != "" && !pluginVersionPattern.MatchString(entry.Version) {
 			t.Fatalf("version %q does not match the host pattern", entry.Version)
@@ -105,7 +110,8 @@ func TestPluginIDMatchesLibraryName(t *testing.T) {
 func TestConsolePagePathsAreDeclared(t *testing.T) {
 	installFakeHost(t)
 	setupTestPlugin(t)
-	page := admin.Page(app.ManagementRoutePrefix)
+	metadata := testApp.Registration().Metadata
+	page := admin.Page(app.ManagementRoutePrefix, admin.Identity{DisplayName: metadata.Name, Version: metadata.Version})
 
 	declared := map[string]bool{}
 	for _, route := range testApp.ManagementRegistration().Routes {

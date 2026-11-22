@@ -29,7 +29,7 @@ const (
 	// hostQueueCapacity 是待落盘日志的缓冲深度。
 	hostQueueCapacity = 256
 	// hostSource 是写入宿主日志的来源标识：面板按这一段区分插件日志。
-	hostSource = "freetier2api"
+	hostSource = "tierbridge2api"
 	// hostTimeLayout 与宿主日志行的时间戳格式一致（毫秒）。
 	hostTimeLayout = "2006-01-02 15:04:05.000"
 )

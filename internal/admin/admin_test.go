@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/state"
-	"freetier2api-plugin/internal/tasks"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/internal/tasks"
 )
 
 type stubDeps struct {
@@ -30,19 +30,22 @@ type stubDeps struct {
 }
 
 func (s stubDeps) Identity() Identity {
-	return Identity{ID: "freetier2api", DisplayName: "FreeTier 2API", ProviderKey: "freetier", Version: "test"}
+	return Identity{ID: "freetier2api", DisplayName: "测试插件", ProviderKey: "freetier", Version: "test"}
 }
 func (s stubDeps) Config() PluginConfig { return DefaultPluginConfig() }
 func (s stubDeps) State() state.State   { return s.store.Snapshot() }
 func (s stubDeps) MutateState(fn func(*state.State)) {
 	s.store.Mutate(fn)
 }
+func (s stubDeps) SaveStateChange(fn func(*state.State)) error {
+	return s.store.MutateAndSave(fn)
+}
 func (s stubDeps) Model() *Catalog { return s.manager }
 func (s stubDeps) ResolveCredential(context.Context, string, []byte, string, map[string]string) (*core.Credential, core.Vendor, error) {
 	return nil, nil, context.Canceled
 }
 func (s stubDeps) RefreshModels(context.Context) (int, error) { return 0, nil }
-func (s stubDeps) Reconfigure() error                         { return nil }
+func (s stubDeps) ApplyRuntimeSettings()                      {}
 
 // callbackResult / callbackErr 让用例能驱动「粘贴回调链接」的返回分支。
 func (s stubDeps) SendLoginSMS(context.Context, string, string) (string, error) {
@@ -177,7 +180,7 @@ func (s stubTaskDeps) Now() time.Time                    { return time.Now() }
 // 编译期已经保证 Go 侧一致，但 HTML 是字符串，编译器看不见。这里把
 // settingsUpdateRequest 的每个 json tag 钉到页面上，防止再次漂移。
 func TestSettingsPayloadKeysMatchConsole(t *testing.T) {
-	page := Page("/plugins/freetier2api")
+	page := Page("/plugins/freetier2api", stubDeps{}.Identity())
 
 	// 兼容旧版页面/脚本的固定字段：后端仍接受，但当前页面不再发送。
 	deprecated := map[string]bool{

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
 )
 
 // normalizeRequestJSON 造一份与宿主同构的归一化请求（含两份大请求体）。

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // 额度查询：获取 CodeArts 账号可用状态与额度概览。

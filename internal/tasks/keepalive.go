@@ -14,10 +14,10 @@ import (
 	"context"
 	"sync"
 
-	"freetier2api-plugin/internal/auth"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/logger"
-	"freetier2api-plugin/internal/safe"
+	"cpa-tierbridge2api-plugin/internal/auth"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/safe"
 )
 
 // KeepaliveResult 是一个账号的续期结果（管理端点 JSON 契约的一部分）。
@@ -36,7 +36,7 @@ type KeepaliveResult struct {
 // 宿主 RPC 的存在。callbackID 为空表示后台任务（无请求作用域）。
 // 返回 refreshed 表示凭证确实变了。
 //
-// 同一账号的续期按 refreshGate 串行化：排程保活、控制台「Token 续期」与
+// 同一账号的续期按 refreshGate 串行化：排程保活、控制台「凭证更新」与
 // 额度查询遇 401 的重试可能同时命中同一个账号，而它们手里是续期前加载的
 // 同一份旧凭证。
 func (s *Service) RefreshAccount(ctx context.Context, callbackID string, account *accountContext) (refreshed bool, err error) {
@@ -160,7 +160,7 @@ func (s *Service) keepaliveOne(ctx context.Context, callbackID string, account *
 	}
 	result.OK = true
 	if refreshed {
-		result.Message = "Token 续期成功"
+		result.Message = "凭证更新成功"
 	} else {
 		result.Message = "凭证有效（未变更）"
 	}

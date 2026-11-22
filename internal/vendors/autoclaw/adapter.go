@@ -22,10 +22,10 @@ import (
 	"strings"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
 )
 
 // 国际版 OAuth 登录会话的有效期与轮询节流。
@@ -39,7 +39,7 @@ type adapter struct {
 	*core.NativeAdapter[*Credential]
 	region Region
 	// baseURL 是区域基地址覆盖（Configure 填充，空表示用默认值）。
-	baseURL string
+	baseURL core.StringSetting
 
 	// credits 缓存最近一轮目录探测的倍率表（官方模型 ID → 展示文案）。
 	credits core.CreditTable
@@ -117,7 +117,7 @@ func newInstance(env core.Env, region Region) core.Vendor {
 
 // Configure 解析 AutoClaw 专属配置（区域基地址覆盖）。
 func (v *adapter) Configure(_ core.Settings, raw map[string]string) {
-	v.baseURL = strings.TrimSpace(raw[v.ID()+"_base_url"])
+	v.baseURL.Store(strings.TrimSpace(raw[v.ID()+"_base_url"]))
 }
 
 // ConfigFields 声明 AutoClaw 专属配置。
@@ -320,7 +320,7 @@ func (v *adapter) SupportsCheckin() bool { return true }
 
 // resolveBaseURL 返回实例当前生效的基地址。
 func (v *adapter) resolveBaseURL() string {
-	return BaseURL(v.baseURL, v.region)
+	return BaseURL(v.baseURL.Load(), v.region)
 }
 
 // probeToken 借一个本实例的可用凭证取 access token（供模型探测用）。

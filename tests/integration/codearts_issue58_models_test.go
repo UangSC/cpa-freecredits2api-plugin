@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/vendors/codearts"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/vendors/codearts"
 )
 
 // TestCodeArtsStaticAndAuthModelsStayInSync 验证控制台目录与 /v1/models 同源。

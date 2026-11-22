@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/admin"
-	"freetier2api-plugin/internal/core"
-	"freetier2api-plugin/internal/hostbridge"
-	"freetier2api-plugin/internal/logger"
-	"freetier2api-plugin/internal/state"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/admin"
+	"cpa-tierbridge2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/internal/logger"
+	"cpa-tierbridge2api-plugin/internal/state"
 )
 
 type hostBridge struct{ app *App }
@@ -29,11 +29,12 @@ func (h *hostBridge) AuthJSON(ctx context.Context, authIndex string) ([]byte, bo
 }
 
 func (h *hostBridge) Settings() core.Settings {
-	cfg := h.app.Config()
+	snapshot := h.app.configSnapshot()
+	cfg := snapshot.config
 	return core.Settings{
 		EnabledRealms: append([]string(nil), cfg.EnabledRealms...),
 		StateDir:      cfg.StateDir,
-		MachineSalt:   h.app.machineSalt,
+		MachineSalt:   snapshot.machineSalt,
 		AutoCheckin:   cfg.AutoCheckin,
 		AutoCheckinAt: cfg.AutoCheckinAt,
 		AutoTasks:     cfg.AutoTasks,
@@ -196,13 +197,22 @@ func (d adminDeps) State() state.State         { return d.app.SnapshotState() }
 func (d adminDeps) MutateState(fn func(*state.State)) {
 	d.app.MutateState(fn)
 }
+func (d adminDeps) SaveStateChange(fn func(*state.State)) error {
+	return d.app.store.MutateAndSave(fn)
+}
 func (d adminDeps) Model() *admin.Catalog { return d.app.models }
 
 func (d adminDeps) RefreshModels(ctx context.Context) (int, error) {
 	return d.app.refreshModelsFromUpstream(ctx)
 }
 
-func (d adminDeps) Reconfigure() error { return d.app.ApplyConfig(d.app.Config()) }
+func (d adminDeps) ApplyRuntimeSettings() {
+	d.app.lifecycleMu.Lock()
+	defer d.app.lifecycleMu.Unlock()
+	cfg := d.app.Config()
+	d.app.models.SetNameTag(admin.EffectiveModelNameTag(cfg, d.app.SnapshotState().ModelNameTag))
+	d.app.configureVendors(cfg)
+}
 
 // SubmitLoginCallback 把页面粘回来的 localhost 回调链接交给对应供应商处理。
 func (d adminDeps) SendLoginSMS(ctx context.Context, vendorID, phone string) (string, error) {

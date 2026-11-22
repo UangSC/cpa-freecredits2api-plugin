@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // TestBuildQueueItemsCollapsesAggregatedTasks 验证聚合任务（RunCode）每个账号只入队一次，
@@ -92,7 +92,7 @@ func TestRunScheduledForAccountSkipsUndeclaredKind(t *testing.T) {
 	service := &Service{}
 	account := &accountContext{vendor: vendor, credential: &core.Credential{FileID: "u1"}}
 
-	message, errRun := service.runScheduledForAccount(context.Background(), account, "dailybonus")
+	message, errRun := service.runScheduledForAccount(context.Background(), account, "dailybonus", false)
 	if errRun != nil || message != "" {
 		t.Fatalf("未声明的任务族应跳过，实际返回 %q / %v", message, errRun)
 	}
@@ -100,7 +100,7 @@ func TestRunScheduledForAccountSkipsUndeclaredKind(t *testing.T) {
 		t.Fatalf("未声明的任务族不该下发到供应商，实际调用 %v", vendor.calls)
 	}
 
-	message, errRun = service.runScheduledForAccount(context.Background(), account, "travel")
+	message, errRun = service.runScheduledForAccount(context.Background(), account, "travel", false)
 	if errRun != nil || message != "travel done" {
 		t.Fatalf("已声明的任务族应正常执行，返回 %q / %v", message, errRun)
 	}

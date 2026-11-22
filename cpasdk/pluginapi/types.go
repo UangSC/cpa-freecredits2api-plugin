@@ -1390,6 +1390,8 @@ type ManagementRequest struct {
 	Query url.Values
 	// Body contains the raw request body.
 	Body []byte
+	// HostCallbackID is the host-assigned callback scope for this management request.
+	HostCallbackID string `json:"host_callback_id,omitempty"`
 	// Context 承载宿主请求的生命周期（仅测试注入使用；线上由宿主 ABI 的
 	// 回调取消语义表达，不走 JSON 传输，因此不参与序列化）。
 	Context context.Context `json:"-"`

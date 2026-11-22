@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"testing"
 
-	"freetier2api-plugin/cpasdk/pluginabi"
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginabi"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 // TestSaveAuthFileAlignsUID 锁定「添加账号 / 粘贴回调」这条写入口也会归一 uid。

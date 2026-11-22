@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"freetier2api-plugin/internal/core"
+	"cpa-tierbridge2api-plugin/internal/core"
 )
 
 // smsLoginStubVendor 复用 writeStubVendor 的 core.Vendor 最小实现，

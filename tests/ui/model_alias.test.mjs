@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadConsoleHTML } from './_console.mjs';
 
-const html = readFileSync(new URL('../../internal/admin/console.html', import.meta.url), 'utf8');
+const html = loadConsoleHTML();
 const aliasFunctions = html.slice(html.indexOf('  var modelAliasSaveVersions'), html.indexOf('  // selectedModelIDs'));
 const syncFunctions = html.slice(html.indexOf('  var MODEL_SYNC_DEBOUNCE_MS'), html.indexOf('  // formatTokens'));
 const officialID = 'sn-deepseek-v4-1-flash-1017';
@@ -129,10 +129,13 @@ test('正在重载时新保存的设置等待下一轮重载，失败返回 fals
   const patches = [];
   const scope = vm.createContext({
     setTimeout, clearTimeout,
+    BASE: '/plugins/test-plugin',
     hostPath: path => path,
     loadModels: () => {}, banner: () => {},
-    api: async method => {
-      if (method === 'GET') return {};
+    api: async (method, path, body) => {
+      assert.equal(method, 'PATCH');
+      assert.equal(path, '/plugins/test-plugin/config');
+      assert.deepEqual(Object.keys(body), ['config_reloaded_at']);
       const pending = deferred();
       patches.push(pending);
       return pending.promise;

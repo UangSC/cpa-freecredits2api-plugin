@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"freetier2api-plugin/cpasdk/pluginapi"
-	"freetier2api-plugin/internal/hostbridge"
+	"cpa-tierbridge2api-plugin/cpasdk/pluginapi"
+	"cpa-tierbridge2api-plugin/internal/hostbridge"
 )
 
 func (s *Service) handleKeepaliveRequest(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
@@ -27,7 +27,7 @@ func (s *Service) handleKeepaliveRequest(req pluginapi.ManagementRequest) plugin
 	results := s.tasks.Keepalive(ctx, hostbridge.RequestCallbackID(req), body.AccountIDs, batchConcurrency)
 	if len(results) == 0 {
 		return JSONResponse(http.StatusOK, map[string]any{
-			"ok": true, "message": "没有需要续期的可用账号", "succeeded": 0, "failed": 0, "results": []any{},
+			"ok": true, "message": "没有需要更新凭证的可用账号", "succeeded": 0, "failed": 0, "results": []any{},
 		})
 	}
 
@@ -46,11 +46,11 @@ func (s *Service) handleKeepaliveRequest(req pluginapi.ManagementRequest) plugin
 	message := ""
 	switch {
 	case failed > 0 && succeeded == 0:
-		message = fmt.Sprintf("全部账号续期失败（%s）", firstErrMsg)
+		message = fmt.Sprintf("凭证更新全部失败（%s）", firstErrMsg)
 	case failed > 0:
-		message = fmt.Sprintf("续期完成：%d 个成功，%d 个失败（%s）", succeeded, failed, firstErrMsg)
+		message = fmt.Sprintf("凭证更新完成，%d 个成功，%d 个失败（%s）", succeeded, failed, firstErrMsg)
 	default:
-		message = fmt.Sprintf("全账号 Token 续期成功（共 %d 个账号已更新）", succeeded)
+		message = fmt.Sprintf("已更新 %d 个账号的凭证", succeeded)
 	}
 	return JSONResponse(http.StatusOK, map[string]any{
 		"ok": failed == 0, "total": len(results), "succeeded": succeeded, "failed": failed,

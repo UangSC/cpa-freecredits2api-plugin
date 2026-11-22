@@ -61,11 +61,7 @@ func TestKeepLastQuotaRejectsWithoutUsablePrevious(t *testing.T) {
 	}
 }
 
-// TestQuotaResultStaleIsNotCached 验证：失败保留的读数不写回缓存。
-//
-// 写回会让 Stale 一直粘着——下次成功之前页面永远显示「非实时」，而缓存里
-// 保存的本该是「最后一次成功取到的值」。
-func TestQuotaResultStaleIsNotCached(t *testing.T) {
+func TestQuotaCachedResultKeepsStaleReadingUntilNextSuccess(t *testing.T) {
 	service := &Service{}
 	service.cacheQuotaResult(quotaResult{OK: true, Remain: 100, UID: "u1", VendorID: "qodercn", AuthID: "a1"})
 
@@ -73,16 +69,14 @@ func TestQuotaResultStaleIsNotCached(t *testing.T) {
 	if !ok {
 		t.Fatal("前置条件不成立：应能保留")
 	}
-	// 模拟 runQuotaBatch 的 defer：Stale 结果直接跳过缓存。
-	if !kept.Stale {
-		t.Fatal("前置条件不成立：应标 Stale")
-	}
-	// 缓存里仍是干净读数。
+	service.cacheQuotaResult(kept)
 	cached := service.getCachedQuota("qodercn", "u1", "a1")
-	if cached == nil || cached.Stale {
-		t.Fatalf("缓存被 Stale 污染: %+v", cached)
+	if cached == nil || !cached.Stale || cached.Remain != 100 || cached.StaleReason != "boom" {
+		t.Fatalf("过期读数和失败原因应对 /status 可见: %+v", cached)
 	}
-	if cached.Remain != 100 {
-		t.Fatalf("缓存读数被改动: %d", cached.Remain)
+	service.cacheQuotaResult(quotaResult{OK: true, Remain: 90, UID: "u1", VendorID: "qodercn", AuthID: "a1"})
+	cached = service.getCachedQuota("qodercn", "u1", "a1")
+	if cached == nil || cached.Stale || cached.Remain != 90 || cached.StaleReason != "" {
+		t.Fatalf("成功后应恢复实时读数: %+v", cached)
 	}
 }
