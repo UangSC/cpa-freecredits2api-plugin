@@ -119,7 +119,7 @@ func TestClassifyRetryableAndStatus(t *testing.T) {
 // TestParseRateResetAndRetryAfter 验证上游等待信息的解析。
 func TestParseRateResetAndRetryAfter(t *testing.T) {
 	// 中文文案优先。
-	reset := ParseRateReset(`{"msg":"额度恢复将在 2026-09-27 04:00:00 重置"}`)
+	reset, _ := parseChatTiming(`{"msg":"额度恢复将在 2026-09-27 04:00:00 重置"}`)
 	if reset.IsZero() {
 		t.Fatal("chinese rate reset wording must be parsed")
 	}
@@ -143,23 +143,30 @@ func TestParseRateResetAndRetryAfter(t *testing.T) {
 	if got := ParseRetryAfter(header, now); got != 30*time.Second {
 		t.Fatalf("http-date Retry-After = %v, want 30s", got)
 	}
-}
-
-// TestClassifyIsModelRateLimit 验证模型级限流的识别。
-func TestClassifyIsModelRateLimit(t *testing.T) {
-	if !IsModelRateLimit(`{"code":6004,"msg":"rate-limiting"}`) {
-		t.Fatal("6004 must be recognized as model-level rate limit")
-	}
-	if IsModelRateLimit(`{"code":1,"msg":"rate limit"}`) {
-		t.Fatal("non-6004 must not be model-level rate limit")
+	header = http.Header{"Retry-After-Ms": {"9223372036854775807"}}
+	if got := ParseRetryAfter(header, now); got != 2*time.Hour {
+		t.Fatalf("过大的毫秒等待时间 = %v，预期安全上限 2h", got)
 	}
 }
 
 func TestModelRateLimitReportsResetTimeToHost(t *testing.T) {
 	const english = `{"code":6004,"msg":"usage exceeds frequency limit, but don't worry, your usage will reset at 2026-11-24 16:49:01 UTC+8, alternatively, you can switch to the other models to continue using it.","requestId":"example"}`
+	const chinese = `{"code":6004,"msg":"您的使用量已超出频率限制，将在 2026-11-24 00:30:05 UTC+8 重置，您也可以切换其他模型继续使用。"}`
 	wantReset := time.Date(2026, time.November, 24, 8, 49, 1, 0, time.UTC)
-	if got := ParseRateReset(english); !got.Equal(wantReset) {
+	if got, _ := parseChatTiming(english); !got.Equal(wantReset) {
 		t.Fatalf("上游重置时刻 = %v，预期 %v", got, wantReset)
+	}
+	chineseReset := time.Date(2026, time.November, 23, 16, 30, 5, 0, time.UTC)
+	if got, _ := parseChatTiming(chinese); !got.Equal(chineseReset) {
+		t.Fatalf("北京时间跨日重置时刻 = %v，预期 %v", got, chineseReset)
+	}
+	escaped := `{"msg":"\u5c06\u5728 2026-11-24 02:00:00 UTC-05:30 \u91cd\u7f6e"}`
+	offsetReset := time.Date(2026, time.November, 24, 7, 30, 0, 0, time.UTC)
+	if got, _ := parseChatTiming(escaped); !got.Equal(offsetReset) {
+		t.Fatalf("显式偏移重置时刻 = %v，预期 %v", got, offsetReset)
+	}
+	if got, _ := parseChatTiming(strings.Replace(english, "UTC+8", "UTC+08:5", 1)); !got.IsZero() {
+		t.Fatalf("非法时区不能退回默认时区，解析得到 %v", got)
 	}
 
 	now := time.Now()
@@ -176,6 +183,7 @@ func TestModelRateLimitReportsResetTimeToHost(t *testing.T) {
 		fallback int
 	}{
 		{"正文提供次日重置时刻", withReset(future), nil, true, 0},
+		{"中文正文含 UTC+8", strings.Replace(chinese, "2026-11-24 00:30:05", future.Format(softRateTimeLayout), 1), nil, true, 0},
 		{"其他业务码也可使用同样的重置文案", strings.Replace(withReset(future), `"code":6004`, `"code":8037`, 1), http.Header{"Retry-After": {"30"}}, true, 0},
 		{"已过的重置时刻回退响应头", withReset(past), http.Header{"Retry-After": {"30"}}, false, 30},
 		{"没有恢复时间的普通 429 交给 CPA 原生退避", `{"code":60040,"msg":"retry later"}`, nil, false, 0},
@@ -194,6 +202,33 @@ func TestModelRateLimitReportsResetTimeToHost(t *testing.T) {
 				}
 			} else if mapped.RetryAfterSeconds != tc.fallback {
 				t.Fatalf("宿主收到的等待时间 = %d 秒，预期 %d 秒", mapped.RetryAfterSeconds, tc.fallback)
+			}
+		})
+	}
+}
+
+func TestChatReportsStructuredRetryPolicyToHost(t *testing.T) {
+	const rateLimited = `{"code":14003,"msg":"Too many requests, please try again later.","retry_policy":{"retry":true,"retry_after":30},"extError":{"type":"too_many_requests"}}`
+	const temporaryFailure = `{"code":11134,"msg":"Please try again later.","retry_policy":{"retry":true,"retry_after":20}}`
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		header http.Header
+		wait   int
+	}{
+		{"429 的 JSON 等待提示", 429, rateLimited, nil, 30},
+		{"500 的 JSON 等待提示保留原状态", 500, temporaryFailure, nil, 20},
+		{"响应头有等待提示时优先使用", 429, rateLimited, http.Header{"Retry-After": {"40"}}, 40},
+		{"正文拒绝重试时不采用其等待提示", 429, strings.Replace(rateLimited, `"retry":true`, `"retry":false`, 1), nil, 0},
+		{"异常大的 JSON 等待提示使用安全上限", 429, strings.Replace(rateLimited, `"retry_after":30`, `"retry_after":9223372036854775807`, 1), nil, 7200},
+		{"无等待提示的额度错误仍交给 CPA", 429, `{"error":{"data":{"code":14018,"msg":""}}}`, nil, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failure := classifyChatError(tc.status, tc.body, tc.header)
+			err := core.ToPluginError(failure).(*core.PluginError)
+			if err.HTTPStatus != tc.status || err.RetryAfterSeconds != tc.wait {
+				t.Fatalf("宿主收到 HTTP %d、等待 %d 秒，预期 HTTP %d、等待 %d 秒", err.HTTPStatus, err.RetryAfterSeconds, tc.status, tc.wait)
 			}
 		})
 	}

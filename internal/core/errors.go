@@ -361,15 +361,14 @@ func (k FailureKind) String() string {
 
 // Failure 是带分类的上游错误。
 //
-// Msg 保持上游原文；Code 是上游业务码的可读形式（可为空）。RetryAfter /
-// ResetAt 是上游明示的等待信息，零值表示未给出。
+// Msg 保持上游原文；Code 是上游业务码的可读形式（可为空）。
+// RetryAfter 是上游明示的等待时间，零值表示未给出。
 type Failure struct {
 	Kind       FailureKind
 	Status     int
 	Code       string
 	Msg        string
 	RetryAfter time.Duration
-	ResetAt    time.Time
 
 	// RetryableOverride 允许供应商覆盖通用的可重试判定（nil 表示按 FailureKind 推导）。
 	RetryableOverride *bool

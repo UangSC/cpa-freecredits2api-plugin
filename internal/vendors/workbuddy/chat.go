@@ -207,14 +207,10 @@ func unwrapEnvelope(status int, body string, header http.Header) (json.RawMessag
 	return envelope.Data, nil
 }
 
-// enrichClassifyError 在分类结果上补齐上游给出的等待信息。
-//
-// 上游有两种表达等待的方式：响应头（Retry-After 系列）与正文文案（"将在 X 重置"）。
-// 两者都解析出来交给调用方，由它决定冷却到哪个时刻。
+// enrichClassifyError 为供应商请求保留响应头里的重试提示。
 func enrichClassifyError(status int, body string, header http.Header) *core.Failure {
 	classified := Classify(status, body)
 	classified.RetryAfter = ParseRetryAfter(header, time.Now())
-	classified.ResetAt = ParseRateReset(body)
 	if classified.Kind == core.FailureKindChannelRejected {
 		// 渠道校验是上游新增的策略拦截，插件侧没有（也不该有）伪造官方客户端证明的手段。
 		// 返回给用户的消息已折叠成人话，日志里保留全量正文：requestId 是反馈上游、
@@ -225,13 +221,21 @@ func enrichClassifyError(status int, body string, header http.Header) *core.Fail
 	return classified
 }
 
-// classifyChatError 将 WorkBuddy 正文中的模型恢复时刻转换为 CPA 的等待提示。
+// classifyChatError 优先采用模型恢复时刻，其次是响应头和正文的相对重试时间。
 func classifyChatError(status int, body string, header http.Header) *core.Failure {
 	failure := enrichClassifyError(status, body, header)
+	if failure.HTTPStatus() != status || (status != http.StatusTooManyRequests && status < http.StatusInternalServerError) {
+		return failure
+	}
+	resetAt, retryAfter := parseChatTiming(body)
 	if status == http.StatusTooManyRequests && failure.Kind == core.FailureKindSoftRate {
-		if wait := time.Until(failure.ResetAt); wait > 0 {
+		if wait := time.Until(resetAt); wait > 0 {
 			failure.RetryAfter = wait
+			return failure
 		}
+	}
+	if failure.RetryAfter == 0 {
+		failure.RetryAfter = retryAfter
 	}
 	return failure
 }

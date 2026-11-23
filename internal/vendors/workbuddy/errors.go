@@ -72,18 +72,14 @@ const (
 	modelBlockCode = "11102"
 	// channelRejectedCode 是渠道校验失败（非官方客户端）。
 	channelRejectedCode = "11128"
-
-	// ModelBlockReason 是（账号, 模型）避让的固定原因串。
-	ModelBlockReason = "11102 model not available"
-	// ModelRateLimitReason 是模型级限流的固定原因串。
-	ModelRateLimitReason = "6004 model rate limited"
 )
 
+const resetTimestampPattern = `(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\s+UTC([+-]\d+(?::\d+)?))?`
+
 var (
-	modelRateLimitRe = regexp.MustCompile(`"code"\s*:\s*"?6004"?`)
-	cnResetRe        = regexp.MustCompile(`将在 (.+?) 重置`)
-	enResetRe        = regexp.MustCompile(`(?i)reset at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})`)
-	// softRateResetLoc 是上游重置时刻使用的时区（固定 UTC+8，不依赖系统 tzdata）。
+	cnResetRe = regexp.MustCompile(`(?i)将在\s*` + resetTimestampPattern + `\s*重置`)
+	enResetRe = regexp.MustCompile(`(?i)reset at\s+` + resetTimestampPattern)
+	// 没有显式时区时，按 WorkBuddy 的默认 UTC+8 解释。
 	softRateResetLoc    = time.FixedZone("UTC+8", 8*3600)
 	softRateTimeLayout  = "2006-01-02 15:04:05"
 	retryAfterSanityCap = 2 * time.Hour
@@ -288,26 +284,70 @@ func IsWAFBlocked(status int, body string) bool {
 	return !strings.Contains(body, `"code":`) && !strings.Contains(body, `"msg":`)
 }
 
-// IsModelRateLimit 判断响应体是否表示模型级限流（6004）。
-func IsModelRateLimit(body string) bool {
-	return modelRateLimitRe.MatchString(body)
+// parseChatTiming 从同一个错误信封读取恢复时刻和相对等待秒数。
+func parseChatTiming(body string) (time.Time, time.Duration) {
+	var envelope struct {
+		Message     string          `json:"msg"`
+		RetryPolicy json.RawMessage `json:"retry_policy"`
+	}
+	if err := json.Unmarshal([]byte(body), &envelope); err != nil {
+		return parseRateReset(body), 0
+	}
+	reset := parseRateReset(core.FirstNonEmpty(envelope.Message, body))
+	if len(envelope.RetryPolicy) == 0 {
+		return reset, 0
+	}
+	var policy struct {
+		Retry      bool  `json:"retry"`
+		RetryAfter int64 `json:"retry_after"`
+	}
+	if err := json.Unmarshal(envelope.RetryPolicy, &policy); err != nil || !policy.Retry || policy.RetryAfter <= 0 {
+		return reset, 0
+	}
+	seconds := min(policy.RetryAfter, int64(retryAfterSanityCap/time.Second))
+	return reset, time.Duration(seconds) * time.Second
 }
 
-// ParseRateReset 从错误正文里解析上游给出的重置时刻。
-//
-// 中文文案优先（CN 域更常见），回落英文格式。都取不到返回零值。
-func ParseRateReset(body string) time.Time {
-	if match := cnResetRe.FindStringSubmatch(body); len(match) == 2 {
-		if parsed, errParse := time.ParseInLocation(softRateTimeLayout, strings.TrimSpace(match[1]), softRateResetLoc); errParse == nil {
-			return parsed
+// parseRateReset 识别中英文恢复文案，优先采用文案里的 UTC 偏移。
+func parseRateReset(message string) time.Time {
+	for _, pattern := range []*regexp.Regexp{cnResetRe, enResetRe} {
+		match := pattern.FindStringSubmatch(message)
+		if match == nil {
+			continue
 		}
-	}
-	if match := enResetRe.FindStringSubmatch(body); len(match) == 2 {
-		if parsed, errParse := time.ParseInLocation(softRateTimeLayout, strings.TrimSpace(match[1]), softRateResetLoc); errParse == nil {
+		location := resetLocation(match[2])
+		if location == nil {
+			continue
+		}
+		if parsed, err := time.ParseInLocation(softRateTimeLayout, match[1], location); err == nil {
 			return parsed
 		}
 	}
 	return time.Time{}
+}
+
+// resetLocation 解析 +8 或 -05:30 形式的偏移，无偏移时使用 WorkBuddy 的默认时区。
+func resetLocation(offset string) *time.Location {
+	if offset == "" {
+		return softRateResetLoc
+	}
+	hourText, minuteText, hasMinutes := strings.Cut(offset[1:], ":")
+	hours, err := strconv.Atoi(hourText)
+	if err != nil || len(hourText) > 2 || hours > 23 {
+		return nil
+	}
+	seconds := hours * 3600
+	if hasMinutes {
+		minutes, err := strconv.Atoi(minuteText)
+		if err != nil || len(minuteText) != 2 || minutes > 59 {
+			return nil
+		}
+		seconds += minutes * 60
+	}
+	if offset[0] == '-' {
+		seconds = -seconds
+	}
+	return time.FixedZone("", seconds)
 }
 
 // ParseRetryAfter 从响应头里解析上游建议的等待时长。
@@ -324,7 +364,7 @@ func ParseRetryAfter(header http.Header, now time.Time) time.Duration {
 	}
 	if raw := strings.TrimSpace(header.Get("Retry-After-Ms")); raw != "" {
 		if millis, errAtoi := parseInt64(raw); errAtoi == nil && millis > 0 {
-			return clampRetryAfter(time.Duration(millis) * time.Millisecond)
+			return time.Duration(min(millis, int64(retryAfterSanityCap/time.Millisecond))) * time.Millisecond
 		}
 	}
 	if raw := strings.TrimSpace(header.Get("X-Ratelimit-Reset")); raw != "" {

@@ -19,7 +19,7 @@ import (
 )
 
 // DefaultVersion 是未注入发行版号时的版本。
-const DefaultVersion = "v0.2.2"
+const DefaultVersion = "v0.2.3"
 
 // Options 是 App 的构造参数。
 type Options struct {
