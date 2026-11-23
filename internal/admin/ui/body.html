@@ -26,8 +26,36 @@
   <div class="topbar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 6h12M4 10h8M4 14h10"/>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+          <defs>
+            <linearGradient id="fc2a-arc-a" x1="20" y1="88" x2="86" y2="20" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#4353E8"/>
+              <stop offset="100%" stop-color="#7C5CFF"/>
+            </linearGradient>
+            <linearGradient id="fc2a-arc-b" x1="42" y1="108" x2="108" y2="42" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#3B82F6"/>
+              <stop offset="100%" stop-color="#06B6D4"/>
+            </linearGradient>
+            <linearGradient id="fc2a-core" x1="38" y1="38" x2="90" y2="90" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#5B6CF0"/>
+              <stop offset="52%" stop-color="#38BDF8"/>
+              <stop offset="100%" stop-color="#14B8A6"/>
+            </linearGradient>
+            <linearGradient id="fc2a-node-a" x1="89" y1="27" x2="101" y2="39" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#38BDF8"/>
+              <stop offset="100%" stop-color="#06B6D4"/>
+            </linearGradient>
+            <linearGradient id="fc2a-node-b" x1="27" y1="89" x2="39" y2="101" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#7C5CFF"/>
+              <stop offset="100%" stop-color="#4353E8"/>
+            </linearGradient>
+          </defs>
+          <path d="M23.5 81.2A44 44 0 0 1 81.2 23.5" stroke="url(#fc2a-arc-a)" stroke-width="11" stroke-linecap="round"/>
+          <path d="M104.5 46.8A44 44 0 0 1 46.8 104.5" stroke="url(#fc2a-arc-b)" stroke-width="11" stroke-linecap="round"/>
+          <circle cx="95.1" cy="32.9" r="6.2" fill="url(#fc2a-node-a)"/>
+          <circle cx="32.9" cy="95.1" r="6.2" fill="url(#fc2a-node-b)"/>
+          <path d="M64 38C65.8 53.5 74.5 62.2 90 64C74.5 65.8 65.8 74.5 64 90C62.2 74.5 53.5 65.8 38 64C53.5 62.2 62.2 53.5 64 38Z" fill="url(#fc2a-core)"/>
+          <path d="M64 56.5L71.5 64L64 71.5L56.5 64Z" fill="#FFFFFF" fill-opacity="0.28"/>
         </svg>
       </span>
       <div class="brand-text">
@@ -110,7 +138,6 @@
           <div class="workspace-title">
             <h2 id="accountWorkspaceTitle">全部账号</h2>
             <span class="muted" id="accountCount"></span>
-            <span class="meta-chip" id="accountFilterHint" hidden></span>
             <button type="button" class="act xs subtle" id="btnResetAccountScope" hidden>返回全部</button>
           </div>
           <div class="toolbar-group">

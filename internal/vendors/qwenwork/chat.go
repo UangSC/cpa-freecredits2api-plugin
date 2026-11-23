@@ -637,11 +637,19 @@ func (v *adapter) runRawChat(ctx context.Context, credential *core.Credential, r
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		data, err := responseBytes(response.Body)
-		if err != nil {
-			return err
+		data, errRead := responseBytes(response.Body)
+		if errRead != nil {
+			if response.StatusCode != http.StatusTooManyRequests {
+				return errRead
+			}
+			failure := &core.Failure{
+				Kind:   core.FailureKindRateLimit,
+				Status: response.StatusCode,
+				Msg:    errRead.Error(),
+			}
+			return core.WithHTTPRateLimitHint(failure, response)
 		}
-		return Classify(response.StatusCode, data)
+		return core.WithHTTPRateLimitHint(Classify(response.StatusCode, data), response)
 	}
 	if strings.Contains(response.Header.Get("Content-Type"), "application/json") {
 		data, err := responseBytes(response.Body)

@@ -19,6 +19,14 @@ import (
 // PluginError 是 Qoder 的上游错误（与其它供应商共用同一类型）。
 type PluginError = core.Failure
 
+func httpRateLimitFailure(response *http.Response, body []byte) *core.Failure {
+	return core.WithHTTPRateLimitHint(&core.Failure{
+		Kind:   core.FailureKindRateLimit,
+		Status: http.StatusTooManyRequests,
+		Msg:    core.FirstNonEmpty(string(body), http.StatusText(http.StatusTooManyRequests)),
+	}, response)
+}
+
 // NewError 构造一个 Qoder 插件错误。
 func NewError(code, message string, status int) *PluginError {
 	kind := core.ClassifyStatus(status)
@@ -44,6 +52,10 @@ func NewError(code, message string, status int) *PluginError {
 func ClassifyCredentialError(err error) error {
 	if err == nil {
 		return nil
+	}
+	var failure *core.Failure
+	if errors.As(err, &failure) && failure.HTTPStatus() == http.StatusTooManyRequests {
+		return failure
 	}
 	message := err.Error()
 	lower := strings.ToLower(message)

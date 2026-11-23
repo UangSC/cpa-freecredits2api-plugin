@@ -104,10 +104,15 @@ func Chat(ctx context.Context, baseURL string, req ChatRequest) ([]byte, error) 
 
 	body, errRead := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if errRead != nil {
-		return nil, &core.Failure{Status: resp.StatusCode, Msg: "read chat response: " + errRead.Error(), Kind: core.FailureKindTransient}
+		failure := &core.Failure{
+			Status: resp.StatusCode,
+			Msg:    "read chat response: " + errRead.Error(),
+			Kind:   core.FailureKindTransient,
+		}
+		return nil, core.WithHTTPRateLimitHint(failure, resp)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, Classify(resp.StatusCode, string(body))
+		return nil, core.WithHTTPRateLimitHint(Classify(resp.StatusCode, string(body)), resp)
 	}
 	return body, nil
 }
@@ -126,7 +131,7 @@ func ChatStream(ctx context.Context, baseURL string, req ChatRequest) (*http.Res
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return nil, nil, Classify(resp.StatusCode, string(body))
+		return nil, nil, core.WithHTTPRateLimitHint(Classify(resp.StatusCode, string(body)), resp)
 	}
 	return resp, renames, nil
 }

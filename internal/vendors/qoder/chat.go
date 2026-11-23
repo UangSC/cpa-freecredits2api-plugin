@@ -25,11 +25,11 @@ import (
 	"cpa-freecredits2api-plugin/internal/hostbridge"
 	"cpa-freecredits2api-plugin/internal/logger"
 
+	"cpa-freecredits2api-plugin/internal/safe"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
 	"errors"
-	"cpa-freecredits2api-plugin/internal/safe"
 	"regexp"
 	"sort"
 )
@@ -907,6 +907,9 @@ func (c *BearerClient) openStreamLines(ctx context.Context, fullURL string, json
 		if resp.StatusCode != 200 {
 			body, errRead := readQoderResponseBody(resp.Body)
 			resp.Body.Close()
+			if resp.StatusCode == http.StatusTooManyRequests {
+				return httpRateLimitFailure(resp, body)
+			}
 			if errRead != nil {
 				return fmt.Errorf("read qoder stream response: %w", errRead)
 			}
@@ -1059,6 +1062,9 @@ func ExchangeJobToken(ctx context.Context, token, machineId, machineToken, machi
 	}
 	defer resp.Body.Close()
 	data, errRead := readQoderResponseBody(resp.Body)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, httpRateLimitFailure(resp, data)
+	}
 	if errRead != nil {
 		return nil, fmt.Errorf("read qoder job token response: %w", errRead)
 	}
@@ -1473,6 +1479,9 @@ func FetchUserInfoWithToken(ctx context.Context, token string, region Region) (m
 	defer resp.Body.Close()
 	var result map[string]interface{}
 	raw, errRead := readQoderResponseBody(resp.Body)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, httpRateLimitFailure(resp, raw)
+	}
 	if errRead != nil {
 		return nil, fmt.Errorf("read qoder userinfo: %w", errRead)
 	}
@@ -1884,6 +1893,10 @@ func (b *Bridge) CallQoderWithOpts(ctx context.Context, agent string, messages [
 // ctx 取消、业务错误、内容审核等一律不可重试。
 func isRetryableStreamError(err error) bool {
 	if err == nil {
+		return false
+	}
+	var failure *core.Failure
+	if errors.As(err, &failure) && failure.HTTPStatus() == http.StatusTooManyRequests {
 		return false
 	}
 	var ue *UpstreamError

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -38,7 +38,7 @@ function chatChunk(delta, finishReason = null) {
   };
 }
 
-function fixtureUpstream(executions) {
+function fixtureUpstream(executions, rateLimited = false) {
   return createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${upstreamKey}`) {
       res.writeHead(401).end();
@@ -58,6 +58,11 @@ function fixtureUpstream(executions) {
       for await (const chunk of req) raw += chunk;
       const body = JSON.parse(raw);
       executions.push(body);
+      if (rateLimited) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '120' });
+        res.end(JSON.stringify({ code: 'frequency_limit', message: 'retry later' }));
+        return;
+      }
       if (body.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write(`data: ${JSON.stringify(chatChunk({ role: 'assistant', content: 'local stream' }))}\n\n`);
@@ -153,6 +158,7 @@ async function startHost(t, upstreamPort, registrySource) {
   const secret = randomUUID();
   const clientKey = randomUUID();
   const config = join(workspace, 'config.yaml');
+  const authDir = join(workspace, 'auths');
   const quote = JSON.stringify;
   const fixtureAuth = storeArchive ? `
   store-auth:
@@ -170,8 +176,11 @@ management:
   disable-control-panel: true
 access:
   api-keys: [${quote(clientKey)}]
+routing:
+  cooldown:
+    save-cooldown-status: true
 oauth:
-  auth-dir: ${quote(join(workspace, 'auths'))}
+  auth-dir: ${quote(authDir)}
 plugins:
   enabled: true
   dir: ${quote(plugins)}${registrySource && registrySource !== 'official' ? `\n  store-sources: [${quote(registrySource)}]` : ''}${fixtureAuth}
@@ -233,7 +242,7 @@ plugins:
       return response.ok && response;
     }, 'CPA 未挂载插件管理路由');
     await statusResponse.body.cancel();
-    return request;
+    return { request, authDir };
   } catch (error) {
     throw new Error(`${error.message}\n${output.replaceAll(secret, '[管理密钥]').replaceAll(clientKey, '[API Key]')}`, { cause: error });
   }
@@ -256,7 +265,7 @@ test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推�
   const upstreamPort = await listen(upstream);
   t.after(() => close(upstream));
   const registrySource = storeArchive ? await fixtureStore(t, storeArchive) : storeSource;
-  const request = await startHost(t, upstreamPort, registrySource);
+  const { request } = await startHost(t, upstreamPort, registrySource);
   const manage = async (path, method = 'GET', body, expectedStatus = 200) =>
     jsonResponse(await request(`${managementPrefix}${path}`, { method, body }), expectedStatus);
   const modelIDs = async () => (await jsonResponse(await request('/v1/models'))).data.map(({ id }) => id);
@@ -371,3 +380,54 @@ test('CPA 通过动态库接入控制台、凭证、模型和普通及流式推�
     return true;
   }, '删除未同步至 CPA');
 });
+
+for (const stream of [false, true]) {
+  test(`CPA 将${stream ? '流式' : '普通'}推理的通用 HTTP 429 持久化`, {
+    skip: !hostBinary || !pluginLibrary,
+    timeout: 60_000,
+  }, async (t) => {
+    const executions = [];
+    const upstream = fixtureUpstream(executions, true);
+    const upstreamPort = await listen(upstream);
+    t.after(() => close(upstream));
+
+    const { request, authDir } = await startHost(t, upstreamPort);
+    const added = await jsonResponse(await request(`${managementPrefix}/accounts/add`, {
+      method: 'POST', body: { vendor: 'tokenplan', api_key: upstreamKey },
+    }));
+    assert.equal(added.ok, true);
+    const registeredModel = await eventually(async () => {
+      const { data } = await jsonResponse(await request('/v1/models'));
+      return data.find(({ id }) => id === model || id.endsWith(`/${model}`))?.id;
+    }, '限流测试模型未注册');
+
+    const send = () => request('/v1/chat/completions', {
+      method: 'POST', body: { model: registeredModel, stream, messages: [{ role: 'user', content: 'local request' }] },
+    });
+    const sentAt = Date.now();
+    const response = await send();
+    assert.equal(response.status, 429, await response.text());
+    assert.equal(response.headers.get('retry-after'), '120');
+    const fileID = added.auth_id.replace(/\.json$/i, '');
+    let observed = [];
+    const record = await eventually(async () => {
+      observed = [];
+      for (const name of await readdir(authDir)) {
+        if (!name.endsWith('.cds')) continue;
+        const { records } = JSON.parse(await readFile(join(authDir, name), 'utf8'));
+        observed.push(...records);
+        const found = records.find(({ auth_id, model: key }) => auth_id?.replace(/\.json$/i, '') === fileID && key === registeredModel);
+        if (found) return found;
+      }
+      return false;
+    }, 'CPA 未把 HTTP 429 的模型冷却写入 .cds').catch((error) => {
+      t.diagnostic(JSON.stringify({ fileID, registeredModel, observed: observed.map(({ auth_id, model }) => ({ auth_id, model })) }));
+      throw error;
+    });
+    assert.ok(Date.parse(record.next_retry_after) >= sentAt + 120_000);
+
+    const blocked = await send();
+    assert.equal(blocked.status, 429, await blocked.text());
+    assert.equal(executions.length, 1, '冷却期间不应再次调用上游');
+  });
+}

@@ -225,6 +225,17 @@ func enrichClassifyError(status int, body string, header http.Header) *core.Fail
 	return classified
 }
 
+// classifyChatError 将 WorkBuddy 正文中的模型恢复时刻转换为 CPA 的等待提示。
+func classifyChatError(status int, body string, header http.Header) *core.Failure {
+	failure := enrichClassifyError(status, body, header)
+	if status == http.StatusTooManyRequests && failure.Kind == core.FailureKindSoftRate {
+		if wait := time.Until(failure.ResetAt); wait > 0 {
+			failure.RetryAfter = wait
+		}
+	}
+	return failure
+}
+
 // refreshTokenResponse 是刷新端点的响应。
 type refreshTokenResponse struct {
 	AccessToken  string `json:"accessToken"`
@@ -350,7 +361,7 @@ func (c *Client) ChatStream(req ChatRequest) (io.ReadCloser, error) {
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, apiBodyLimit))
 		closeBody(resp.Body)
-		errClassified := enrichClassifyError(resp.StatusCode, string(body), resp.Header)
+		errClassified := classifyChatError(resp.StatusCode, string(body), resp.Header)
 		if errClassified != nil && errClassified.Kind == core.FailureKindContentBlocked && c.opts.OnContentBlocked != nil {
 			c.opts.OnContentBlocked()
 		}

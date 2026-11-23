@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="docs/images/logo.svg" alt="FreeCredits2API Logo" width="96" height="96" />
+
 # FreeCredits2API
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
@@ -5,6 +9,8 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 中文 | [English](README_EN.md)
+
+</div>
 
 FreeCredits2API 是面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）的多供应商接入插件，提供统一的账号、模型、额度与任务管理。插件以原生动态库形式运行，复用宿主的 API、鉴权和路由能力。
 

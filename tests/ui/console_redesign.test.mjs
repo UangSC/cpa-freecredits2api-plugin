@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadConsoleHTML } from './_console.mjs';
@@ -243,4 +244,20 @@ test('空供应商侧栏与工作区等高对齐，管理密钥升级为独立�
     scope.clearSavedKeys(true);
     assert.equal(scope.rememberedLocalKey(), '', '退出后应清除已迁移的密钥');
   }
+});
+
+test('透明背景 SVG Logo 资产同步且已替换控制台图标与 Favicon', () => {
+  const docsLogo = readFileSync(new URL('../../docs/images/logo.svg', import.meta.url), 'utf8').trim();
+  const uiLogo = readFileSync(new URL('../../internal/admin/ui/logo.svg', import.meta.url), 'utf8').trim();
+  assert.equal(docsLogo, uiLogo, 'docs/images/logo.svg 与 internal/admin/ui/logo.svg 应保持完全一致');
+  assert.equal(docsLogo.includes('<rect'), false, '透明背景 Logo 不应包含实心背景矩形');
+  assert.equal(html.includes('__PLUGIN_FAVICON__'), false, '页面不应残留 __PLUGIN_FAVICON__ 占位符');
+  assert.match(
+    html,
+    /<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+">/,
+    '页面 <head> 应包含 base64 SVG Favicon',
+  );
+  const brandMark = html.match(/<span class="brand-mark" aria-hidden="true">([\s\S]*?)<\/span>/);
+  assert.ok(brandMark, '顶栏应包含 .brand-mark 容器');
+  assert.equal(brandMark[1].includes('id="fc2a-core"'), true, '.brand-mark 应内联新版透明 SVG Logo');
 });

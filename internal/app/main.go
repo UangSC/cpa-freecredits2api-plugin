@@ -12,6 +12,7 @@ import (
 
 	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
 	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/admin"
 	"cpa-freecredits2api-plugin/internal/core"
 	"cpa-freecredits2api-plugin/internal/logger"
 )
@@ -180,6 +181,7 @@ func (a *App) Registration() registration {
 			Version:          a.version,
 			Author:           pluginAuthor,
 			GitHubRepository: pluginRepository,
+			Logo:             admin.LogoDataURI(),
 			ConfigFields:     a.configFields(),
 		},
 		Capabilities: registrationCapabilities{

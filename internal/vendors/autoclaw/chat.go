@@ -212,10 +212,15 @@ func Chat(ctx context.Context, baseURL string, req ChatRequest) ([]byte, error) 
 
 	body, errRead := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if errRead != nil {
-		return nil, &core.Failure{Status: resp.StatusCode, Msg: "read chat response: " + errRead.Error(), Kind: core.FailureKindTransient}
+		failure := &core.Failure{
+			Status: resp.StatusCode,
+			Msg:    "read chat response: " + errRead.Error(),
+			Kind:   core.FailureKindTransient,
+		}
+		return nil, core.WithHTTPRateLimitHint(failure, resp)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, Classify(resp.StatusCode, 0, string(body))
+		return nil, core.WithHTTPRateLimitHint(Classify(resp.StatusCode, 0, string(body)), resp)
 	}
 	// 业务信封形态（{"code","msg","data"}）：非 0 业务码按错误处理。
 	if code, msg, ok := envelopeError(body); ok {
@@ -242,7 +247,7 @@ func ChatStream(ctx context.Context, baseURL string, req ChatRequest) (*http.Res
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer func() { _ = resp.Body.Close() }()
 		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return nil, Classify(resp.StatusCode, 0, string(payload))
+		return nil, core.WithHTTPRateLimitHint(Classify(resp.StatusCode, 0, string(payload)), resp)
 	}
 	return resp, nil
 }

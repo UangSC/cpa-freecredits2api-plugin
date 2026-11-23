@@ -76,6 +76,19 @@ func Classify(status int, body string) *core.Failure {
 	}
 }
 
+// classifyHTTPError 保留网关明确返回的 429，正文中的额度文案仍供排查。
+func classifyHTTPError(response *http.Response, body string) *core.Failure {
+	if response.StatusCode == http.StatusTooManyRequests {
+		return core.WithHTTPRateLimitHint(&core.Failure{
+			Kind:   core.FailureKindRateLimit,
+			Status: response.StatusCode,
+			Code:   upstreamCode(body),
+			Msg:    core.Truncate(body, 300),
+		}, response)
+	}
+	return Classify(response.StatusCode, body)
+}
+
 // upstreamCode 从正文里取上游业务码。
 //
 // 形态：`{"code":50110,...}` 或流内文本 `50110:insufficient balance (1008)`。

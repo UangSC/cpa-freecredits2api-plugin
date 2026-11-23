@@ -11,9 +11,13 @@ package admin
 
 import (
 	_ "embed"
+	"encoding/base64"
 	"html"
 	"strings"
 )
+
+//go:embed ui/logo.svg
+var uiLogoSVG string
 
 //go:embed ui/styles.css
 var uiStyles string
@@ -39,6 +43,13 @@ var uiAuthJS string
 //go:embed ui/settings_logs.js
 var uiSettingsLogsJS string
 
+var logoDataURI = "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(strings.TrimSpace(uiLogoSVG)))
+
+// LogoDataURI 返回内嵌 SVG Logo 的 Data URI，供插件元数据和页面图标复用。
+func LogoDataURI() string {
+	return logoDataURI
+}
+
 var pageTemplate = strings.Join([]string{
 	"<!DOCTYPE html>",
 	"<html lang=\"zh-CN\">",
@@ -46,6 +57,7 @@ var pageTemplate = strings.Join([]string{
 	"<meta charset=\"utf-8\">",
 	"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
 	"<title>__PLUGIN_NAME__</title>",
+	"<link rel=\"icon\" type=\"image/svg+xml\" href=\"__PLUGIN_FAVICON__\">",
 	"<style>",
 	uiStyles,
 	"</style>",
@@ -71,5 +83,6 @@ func Page(basePath string, id Identity) string {
 		"__BASE__", basePath,
 		"__PLUGIN_NAME__", html.EscapeString(id.DisplayName),
 		"__PLUGIN_VERSION__", html.EscapeString(id.Version),
+		"__PLUGIN_FAVICON__", LogoDataURI(),
 	).Replace(pageTemplate)
 }

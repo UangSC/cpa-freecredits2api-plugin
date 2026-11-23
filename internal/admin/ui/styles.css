@@ -183,12 +183,12 @@ header {
   padding: 8px 0;
 }
 .brand-mark {
-  flex: none; width: 28px; height: 28px; border-radius: 8px;
-  background: var(--accent); color: var(--accent-fg);
+  flex: none; width: 30px; height: 30px; border-radius: 0;
+  background: transparent;
   display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
 }
-.brand-mark svg { width: 16px; height: 16px; }
+.brand-mark svg { width: 30px; height: 30px; display: block; }
 .brand-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .brand-row { display: flex; align-items: center; gap: 7px; }
 header h1 {
@@ -354,12 +354,6 @@ section.view.active { display: block; }
   letter-spacing: -.02em; color: var(--fg);
 }
 .kpi-chip.active .kpi-val { color: var(--accent-text); }
-.meta-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 22px; padding: 0 8px; border-radius: 999px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  font-size: 11.5px; color: var(--muted); font-weight: 500;
-}
 
 /* ---- 主从分栏布局（账号 / 模型 / 任务共用）：左侧供应商导航与右侧工作区等高对齐 ---- */
 .split-layout {

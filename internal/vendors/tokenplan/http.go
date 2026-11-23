@@ -3,9 +3,9 @@ package tokenplan
 import (
 	"bytes"
 	"context"
-	"errors"
 	"cpa-freecredits2api-plugin/internal/core"
 	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -50,6 +50,10 @@ func newRequest(ctx context.Context, method, baseURL, path, apiKey string, body 
 
 func readResponse(resp *http.Response, limit int64) ([]byte, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	// 已知的 HTTP 限流仍有效，即使错误正文截断或读取失败。
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, core.WithHTTPRateLimitHint(classify(resp.StatusCode, body), resp)
+	}
 	if err != nil {
 		return nil, &core.Failure{Kind: core.FailureKindTransient, Msg: "读取 Token Plan 响应失败"}
 	}

@@ -137,10 +137,11 @@ func TestParseRateResetAndRetryAfter(t *testing.T) {
 	if got := ParseRetryAfter(header, time.Now()); got > time.Hour*2 {
 		t.Fatalf("Retry-After must be capped, got %v", got)
 	}
-	// HTTP-Date 形态被忽略（不是纯数字）。
+	// 标准 HTTP 日期也可用于退避。
 	header.Set("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT")
-	if got := ParseRetryAfter(header, time.Now()); got != 0 {
-		t.Fatalf("http-date Retry-After must be ignored, got %v", got)
+	now := time.Date(2026, time.October, 21, 7, 27, 30, 0, time.UTC)
+	if got := ParseRetryAfter(header, now); got != 30*time.Second {
+		t.Fatalf("http-date Retry-After = %v, want 30s", got)
 	}
 }
 
@@ -151,6 +152,50 @@ func TestClassifyIsModelRateLimit(t *testing.T) {
 	}
 	if IsModelRateLimit(`{"code":1,"msg":"rate limit"}`) {
 		t.Fatal("non-6004 must not be model-level rate limit")
+	}
+}
+
+func TestModelRateLimitReportsResetTimeToHost(t *testing.T) {
+	const english = `{"code":6004,"msg":"usage exceeds frequency limit, but don't worry, your usage will reset at 2026-11-24 16:49:01 UTC+8, alternatively, you can switch to the other models to continue using it.","requestId":"example"}`
+	wantReset := time.Date(2026, time.November, 24, 8, 49, 1, 0, time.UTC)
+	if got := ParseRateReset(english); !got.Equal(wantReset) {
+		t.Fatalf("上游重置时刻 = %v，预期 %v", got, wantReset)
+	}
+
+	now := time.Now()
+	future := now.Add(24 * time.Hour).In(softRateResetLoc).Truncate(time.Second)
+	past := now.Add(-time.Minute).In(softRateResetLoc).Truncate(time.Second)
+	withReset := func(at time.Time) string {
+		return strings.Replace(english, "2026-11-24 16:49:01", at.Format(softRateTimeLayout), 1)
+	}
+	for _, tc := range []struct {
+		name     string
+		body     string
+		header   http.Header
+		useReset bool
+		fallback int
+	}{
+		{"正文提供次日重置时刻", withReset(future), nil, true, 0},
+		{"其他业务码也可使用同样的重置文案", strings.Replace(withReset(future), `"code":6004`, `"code":8037`, 1), http.Header{"Retry-After": {"30"}}, true, 0},
+		{"已过的重置时刻回退响应头", withReset(past), http.Header{"Retry-After": {"30"}}, false, 30},
+		{"没有恢复时间的普通 429 交给 CPA 原生退避", `{"code":60040,"msg":"retry later"}`, nil, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := time.Now()
+			failure := classifyChatError(http.StatusTooManyRequests, tc.body, tc.header)
+			mapped := core.ToPluginError(failure).(*core.PluginError)
+			if mapped.HTTPStatus != http.StatusTooManyRequests || !mapped.Retryable {
+				t.Fatalf("宿主错误应为可重试的 HTTP 429，实际 %+v", mapped)
+			}
+			if tc.useReset {
+				wait := time.Duration(mapped.RetryAfterSeconds) * time.Second
+				if before.Add(wait).After(future.Add(time.Second)) || time.Now().Add(wait).Before(future) {
+					t.Fatalf("宿主收到的等待时长 %v 与重置时刻 %v 不符", wait, future)
+				}
+			} else if mapped.RetryAfterSeconds != tc.fallback {
+				t.Fatalf("宿主收到的等待时间 = %d 秒，预期 %d 秒", mapped.RetryAfterSeconds, tc.fallback)
+			}
+		})
 	}
 }
 

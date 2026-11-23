@@ -49,10 +49,14 @@ func Chat(ctx context.Context, baseURL string, req ChatRequest) ([]byte, error) 
 
 	body, errRead := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if errRead != nil {
-		return nil, transientErr("read zcode response: " + errRead.Error())
+		failure := transientErr("read zcode response: " + errRead.Error())
+		if resp.StatusCode == http.StatusTooManyRequests {
+			failure.Status = resp.StatusCode
+		}
+		return nil, core.WithHTTPRateLimitHint(failure, resp)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, Classify(resp.StatusCode, string(body))
+		return nil, core.WithHTTPRateLimitHint(Classify(resp.StatusCode, string(body)), resp)
 	}
 	// 上游有时以 HTTP 200 包装业务错误，不能当成成功响应。
 	if errUpstream := classifyEmbeddedError(body); errUpstream != nil {
@@ -77,7 +81,7 @@ func ChatStream(ctx context.Context, baseURL string, req ChatRequest, onChunk fu
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return Classify(resp.StatusCode, string(body))
+		return core.WithHTTPRateLimitHint(Classify(resp.StatusCode, string(body)), resp)
 	}
 
 	// 上游有时忽略 stream 参数回一个完整 JSON 文档。校验错误必须在这里拦下，

@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -568,15 +569,10 @@ func doMessageRequest(ctx context.Context, cred *Credential, req *core.ExecuteRe
 		return nil, "", 0, fmt.Errorf("send message request: %w", errDo)
 	}
 
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		_ = resp.Body.Close()
-		return nil, "", 0, Classify(resp.StatusCode, string(raw))
-	}
 	if resp.StatusCode >= 400 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		_ = resp.Body.Close()
-		return nil, "", 0, Classify(resp.StatusCode, string(raw))
+		return nil, "", 0, classifyHTTPError(resp, string(raw))
 	}
 
 	return resp.Body, modelCfg.ID, promptTokens, nil
@@ -949,7 +945,7 @@ func fetchAgents(ctx context.Context, cred *Credential, baseURLOverride string) 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", Classify(resp.StatusCode, string(body))
+		return "", classifyHTTPError(resp, string(body))
 	}
 
 	var raw map[string]any
@@ -1006,7 +1002,12 @@ func prepare(ctx context.Context, cred *Credential, baseURLOverride string, work
 
 	// 2. /agent 列表解析
 	if cred.AgentID == "" {
-		if agentID, err := fetchAgents(ctx, cred, baseURLOverride); err == nil && agentID != "" {
+		agentID, err := fetchAgents(ctx, cred, baseURLOverride)
+		var failure *core.Failure
+		if errors.As(err, &failure) && failure.HTTPStatus() == http.StatusTooManyRequests {
+			return err
+		}
+		if err == nil && agentID != "" {
 			cred.AgentID = agentID
 		}
 	}
@@ -1026,7 +1027,9 @@ func createSession(ctx context.Context, cred *Credential, baseURLOverride string
 		_, _, _, _ = fetchUserInfo(ctx, cred, baseURLOverride)
 	}
 	if cred.AgentID == "" {
-		_ = prepare(ctx, cred, baseURLOverride, workspace)
+		if err := prepare(ctx, cred, baseURLOverride, workspace); err != nil {
+			return "", err
+		}
 	}
 	if cred.AgentID == "" {
 		return "", fmt.Errorf("minimax agent_id is unknown and could not be discovered")
@@ -1048,7 +1051,7 @@ func createSession(ctx context.Context, cred *Credential, baseURLOverride string
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", Classify(resp.StatusCode, string(body))
+		return "", classifyHTTPError(resp, string(body))
 	}
 
 	var raw map[string]any

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"cpa-freecredits2api-plugin/internal/core"
 	"cpa-freecredits2api-plugin/internal/hostbridge"
 )
 
@@ -39,11 +40,21 @@ func Chat(ctx context.Context, baseURL string, req ChatRequest) ([]byte, error) 
 
 	body, errRead := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if errRead != nil {
-		return nil, fmt.Errorf("read codearts response: %w", errRead)
+		err := fmt.Errorf("read codearts response: %w", errRead)
+		if resp.StatusCode != http.StatusTooManyRequests {
+			return nil, err
+		}
+		failure := &core.Failure{
+			Kind:   core.FailureKindRateLimit,
+			Status: resp.StatusCode,
+			Msg:    err.Error(),
+		}
+		return nil, core.WithHTTPRateLimitHint(failure, resp)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, dialogueFailure(Classify(resp.StatusCode, string(body)))
+		failure := dialogueFailure(Classify(resp.StatusCode, string(body)))
+		return nil, core.WithHTTPRateLimitHint(failure, resp)
 	}
 	// HTTP 200 也可能是业务错误信封（{"error_code":"4004","error_msg":...}）：
 	// 原样透传客户端只会拿到一个不符合 OpenAI 契约的响应体。
@@ -64,7 +75,8 @@ func ChatStream(ctx context.Context, baseURL string, req ChatRequest) (*http.Res
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		_ = resp.Body.Close()
-		return nil, dialogueFailure(Classify(resp.StatusCode, string(body)))
+		failure := dialogueFailure(Classify(resp.StatusCode, string(body)))
+		return nil, core.WithHTTPRateLimitHint(failure, resp)
 	}
 
 	return resp, nil

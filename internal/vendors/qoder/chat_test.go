@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"cpa-freecredits2api-plugin/internal/core"
 	"cpa-freecredits2api-plugin/internal/hostbridge"
+	"cpa-freecredits2api-plugin/internal/hostbridge/hostbridgetest"
 	"cpa-freecredits2api-plugin/tests/testhost"
 )
 
@@ -43,6 +45,70 @@ func TestRunChatCompletionsPreservesHostCallbackAndCancellation(t *testing.T) {
 	}
 	if got := len(host.CallbackIDs()); got != len(ids) {
 		t.Fatalf("已取消的请求不应打开宿主上游连接，回调总数 %d", got)
+	}
+}
+
+func TestChat429PreservesStatusAndRetryAfter(t *testing.T) {
+	const upstreamBody = `{"message":"retry timeout exceeded"}`
+	for _, stream := range []bool{false, true} {
+		name := "非流式"
+		if stream {
+			name = "流式"
+		}
+		t.Run(name, func(t *testing.T) {
+			host := testhost.New()
+			calls := 0
+			host.SetUpstream(func(_, _, _ string) testhost.UpstreamResponse {
+				calls++
+				return testhost.UpstreamResponse{
+					Status: http.StatusTooManyRequests,
+					Header: http.Header{"Retry-After": {"17"}},
+					Body:   upstreamBody,
+				}
+			})
+			hostbridge.Configure(host.Call)
+			t.Cleanup(func() { hostbridge.Configure(nil) })
+			session := &SessionContext{}
+			bridge := &Bridge{sess: session, client: NewBearerClient(session), region: RegionCN, templateBase: map[string]any{}}
+			ctx := hostbridge.WithCallbackID(context.Background(), "qoder-chat-429")
+			payload := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"test"}]}`)
+			var err error
+			if stream {
+				err = StreamChatCompletions(ctx, bridge, payload, func([]byte) error {
+					t.Error("HTTP 429 不应产生正常分片")
+					return nil
+				}, 0)
+			} else {
+				err = RunChatCompletions(ctx, bridge, payload, io.Discard, 0)
+			}
+			assertHTTP429(t, err, upstreamBody)
+			if calls != 1 {
+				t.Fatalf("HTTP 429 应交给宿主处理，上游请求数为 %d", calls)
+			}
+		})
+	}
+}
+
+func TestJobToken429PreservedDuringBridgeSetup(t *testing.T) {
+	const upstreamBody = `{"message":"too many token requests"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "17")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, upstreamBody)
+	}))
+	defer server.Close()
+	hostbridgetest.UseLoopbackHost(t)
+	ctx := hostbridge.WithCallbackID(context.Background(), "qoder-bridge-429")
+	_, err := ExchangeJobToken(ctx, "test-pat", "machine-id", "machine-token", "machine-type", server.URL)
+	assertHTTP429(t, ClassifyCredentialError(err), upstreamBody)
+}
+
+func assertHTTP429(t *testing.T, err error, upstreamBody string) {
+	t.Helper()
+	pluginErr, ok := core.ToPluginError(err).(*core.PluginError)
+	if !ok || pluginErr.HTTPStatus != http.StatusTooManyRequests || pluginErr.RetryAfterSeconds != 17 ||
+		!strings.Contains(pluginErr.Message, upstreamBody) {
+		t.Fatalf("期望插件错误保留 HTTP 429、Retry-After 和响应正文，实际为 %#v", pluginErr)
 	}
 }
 

@@ -413,20 +413,12 @@ func streamErrorDetail(errClose error, message string) *pluginabi.Error {
 	if strings.TrimSpace(message) == "" {
 		message = pluginErr.Message
 	}
-	// 等待秒数取两处口径的较大者：分类结果可能已经从宿主桥的错误文本里还原出
-	// Retry-After，而原始 error 上取不到。
-	seconds := pluginErr.RetryAfterSeconds
-	if wait := core.RetryAfterOf(errClose); wait > 0 {
-		if rounded := int((wait + time.Second - 1) / time.Second); rounded > seconds {
-			seconds = rounded
-		}
-	}
 	return &pluginabi.Error{
 		Code:              pluginErr.Code,
 		Message:           message,
 		Retryable:         pluginErr.Retryable,
 		HTTPStatus:        pluginErr.HTTPStatus,
-		RetryAfterSeconds: seconds,
+		RetryAfterSeconds: pluginErr.RetryAfterSeconds,
 	}
 }
 

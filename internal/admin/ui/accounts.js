@@ -579,13 +579,6 @@
     setText("accountCount", accounts.length
       ? ("(" + (visible.length === accounts.length ? accounts.length : (visible.length + " / " + accounts.length)) + ")")
       : "");
-    var hintEl = document.getElementById("accountFilterHint");
-    var promptMode = status && status.settings && status.settings.prompt_mode;
-    if (hintEl) {
-      hintEl.hidden = !promptMode;
-      hintEl.textContent = promptMode ? ("提示词 · " + promptMode) : "";
-    }
-
     if (!accounts.length) {
       syncAccountSelection();
       renderEmptyState(host, "还没有添加账号", "点击上方「+ 添加账号」选择任意供应商完成登录或填入 API Key，也可在 CPA 面板的「添加认证」中导入。", "+ 添加账号", function () { toggleVendorMenu(); });

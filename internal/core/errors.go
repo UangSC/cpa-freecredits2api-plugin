@@ -215,11 +215,11 @@ func retryAfterSeconds(err error) int {
 	if wait <= 0 {
 		return 0
 	}
-	seconds := int((wait + time.Second - 1) / time.Second)
-	if seconds < 1 {
-		seconds = 1
+	seconds := wait / time.Second
+	if wait%time.Second != 0 {
+		seconds++
 	}
-	return seconds
+	return int(seconds)
 }
 
 // upstreamCode 生成错误码：upstream_<kind>。

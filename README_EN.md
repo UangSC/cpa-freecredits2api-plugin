@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="docs/images/logo.svg" alt="FreeCredits2API Logo" width="96" height="96" />
+
 # FreeCredits2API
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
@@ -5,6 +9,8 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 [中文](README.md) | English
+
+</div>
 
 FreeCredits2API is a multi-provider plugin for [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (CPA), with a unified console for accounts, models, quotas, and tasks. It runs as a native shared library and uses the host's API, authentication, and routing.
 

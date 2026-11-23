@@ -312,17 +312,15 @@ func ParseRateReset(body string) time.Time {
 
 // ParseRetryAfter 从响应头里解析上游建议的等待时长。
 //
-// 候选头与语义：Retry-After（秒）、Retry-After-Ms（毫秒）、
+// 候选头与语义：标准 Retry-After（秒或日期）、Retry-After-Ms（毫秒）、
 // X-Ratelimit-Reset（epoch 秒，≥12 位按毫秒解释）。
-// HTTP-Date 形态与超过 2 小时的值一律忽略（上游偶发返回离谱值）。
+// WorkBuddy 的响应头等待时长保留原有 2 小时上限，正文的明确恢复时刻单独处理。
 func ParseRetryAfter(header http.Header, now time.Time) time.Duration {
 	if header == nil {
 		return 0
 	}
-	if raw := strings.TrimSpace(header.Get("Retry-After")); raw != "" {
-		if seconds, errAtoi := parseInt64(raw); errAtoi == nil && seconds > 0 {
-			return clampRetryAfter(time.Duration(seconds) * time.Second)
-		}
+	if wait := core.HTTPRetryAfter(header, now); wait > 0 {
+		return clampRetryAfter(wait)
 	}
 	if raw := strings.TrimSpace(header.Get("Retry-After-Ms")); raw != "" {
 		if millis, errAtoi := parseInt64(raw); errAtoi == nil && millis > 0 {

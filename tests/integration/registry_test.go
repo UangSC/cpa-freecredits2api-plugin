@@ -40,6 +40,7 @@ type registryManifest struct {
 		Description string   `json:"description"`
 		Author      string   `json:"author"`
 		Repository  string   `json:"repository"`
+		Logo        string   `json:"logo"`
 		Homepage    string   `json:"homepage"`
 		License     string   `json:"license"`
 		Version     string   `json:"version"`
@@ -81,6 +82,9 @@ func TestRegistryManifestIsValid(t *testing.T) {
 		}
 		if !githubRepositoryRe.MatchString(entry.Repository) {
 			t.Fatalf("repository %q must be https://github.com/{owner}/{repo}", entry.Repository)
+		}
+		if strings.TrimSpace(entry.Logo) == "" || !strings.HasPrefix(entry.Logo, "https://") {
+			t.Fatalf("logo %q must be a non-empty HTTPS URL", entry.Logo)
 		}
 		if entry.Name != metadata.Name || entry.Repository != metadata.GitHubRepository {
 			t.Fatalf("registry identity = %q / %q, runtime metadata = %q / %q",

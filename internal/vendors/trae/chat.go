@@ -550,7 +550,7 @@ func doTraeRequest(ctx context.Context, baseURL string, req ChatRequest) (io.Rea
 	if resp.StatusCode >= 400 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		_ = resp.Body.Close()
-		return nil, "", Classify(resp.StatusCode, string(raw))
+		return nil, "", core.WithHTTPRateLimitHint(Classify(resp.StatusCode, string(raw)), resp)
 	}
 	return resp.Body, model, nil
 }
