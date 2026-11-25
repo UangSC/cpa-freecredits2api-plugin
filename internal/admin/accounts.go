@@ -339,6 +339,10 @@ func (s *Service) handleAccountEnabledRequest(req pluginapi.ManagementRequest) p
 		result.OK = true
 		if body.Enabled {
 			result.Message = "已启用"
+			fileID := core.FileIDFromFileName(entry.Name)
+			s.deps.MutateState(func(current *state.State) {
+				delete(current.ModelCooldowns, fileID)
+			})
 		} else {
 			result.Message = "已停用"
 		}
@@ -412,11 +416,11 @@ func (s *Service) deleteAuthFile(ctx context.Context, callbackID string, entry c
 	if !okRaw {
 		return fmt.Errorf("读取凭证失败，无法确认归属")
 	}
-	targetPath, errSafe := safeAuthFilePath(s.registry, entry, raw, core.FirstNonEmpty(filePath, entry.Path))
+	file, errSafe := readAuthFile(s.registry, entry, raw, core.FirstNonEmpty(filePath, entry.Path))
 	if errSafe != nil {
 		return errSafe
 	}
-	fileName := filepath.Base(targetPath)
+	fileName := filepath.Base(file.path)
 	// host.auth.save 会按 auth.parse 的结果替换同一文件的运行时记录。
 	// 使用不含令牌的删除标记先注销账号和模型，再移除文件。
 	marker := []byte(`{"type":"` + core.ProviderKey + `","disabled":true,"` + core.AuthRemovalMarker + `":true}`)
@@ -424,17 +428,16 @@ func (s *Service) deleteAuthFile(ctx context.Context, callbackID string, entry c
 	if errUnregister != nil {
 		logger.Debug("could not unregister auth file %s via host before deletion: %v", fileName, errUnregister)
 	}
-	if errRemove := removeAuthFile(targetPath); errRemove != nil && !os.IsNotExist(errRemove) {
+	if errRemove := removeAuthFile(file.path); errRemove != nil && !os.IsNotExist(errRemove) {
 		if errUnregister == nil {
-			if _, errRestore := hostbridge.SaveAuth(callbackID, fileName, raw); errRestore != nil {
+			if _, errRestore := hostbridge.SaveAuth(callbackID, fileName, file.raw); errRestore != nil {
 				return fmt.Errorf("删除文件失败：%w，恢复凭证也失败：%v", errRemove, errRestore)
 			}
 		}
 		return fmt.Errorf("删除文件失败：%w", errRemove)
 	}
-	s.purgeAccountState(raw, fileName)
-	logger.Info("deleted auth file %s (vendor=%s)", fileName,
-		credentialVendorLabel(s.registry, raw, fileName))
+	s.purgeAccountState(file.raw, fileName)
+	logger.Info("deleted auth file %s (vendor=%s)", fileName, file.vendorID)
 	return nil
 }
 
@@ -455,43 +458,37 @@ func (s *Service) purgeAccountState(raw []byte, fileName string) {
 		delete(current.Checkin, fileID)
 		delete(current.CheckinHistory, historyKey)
 		delete(current.DailyBonusSent, historyKey)
+		delete(current.ModelCooldowns, fileID)
 	})
 }
 
-// credentialVendorLabel 反查凭证真正的供应商标识，供日志使用。
-//
-// 宿主的 auth 记录只有 provider（=本插件）与文件名，Name 常常就是文件名本身；
-// 直接把它当 vendor 写日志会出现 vendor=codearts-codearts-user.json 这种误导
-// （issue #58）。查不到归属时写 unknown，不拿文件名冒充。
-func credentialVendorLabel(registry *core.Registry, raw []byte, fileName string) string {
-	credential, okCredential := registry.ParseCredential(raw, fileName, nil)
-	if !okCredential {
-		return "unknown"
-	}
-	return core.FirstNonEmpty(credential.VendorIDValue(), "unknown")
-}
-
-// setAuthDisabled 在凭证文件上写/清 disabled 标记。
-//
-// 写回由宿主同时更新磁盘与内存注册表。校验与删除共用凭证归属和路径检查。
 func (s *Service) setAuthDisabled(ctx context.Context, callbackID string, entry core.HostAuth, disabled bool) error {
 	raw, filePath, okRaw := hostbridge.AuthJSONAndPath(ctx, callbackID, entry.AuthIndex)
 	if !okRaw {
 		return fmt.Errorf("读取凭证失败，无法确认归属")
 	}
-	targetPath, errSafe := safeAuthFilePath(s.registry, entry, raw, core.FirstNonEmpty(filePath, entry.Path))
+	return s.SaveAuthDisabled(callbackID, entry, raw, core.FirstNonEmpty(filePath, entry.Path), disabled)
+}
+
+// SaveAuthDisabled 经宿主写回 disabled 标记，同时更新磁盘与内存注册表。
+// 手动与自动停用共用凭证归属和路径校验。
+func (s *Service) SaveAuthDisabled(callbackID string, entry core.HostAuth, raw []byte, filePath string, disabled bool) error {
+	file, errSafe := readAuthFile(s.registry, entry, raw, filePath)
 	if errSafe != nil {
 		return errSafe
 	}
-	updated, errUpdate := setCredentialDisabled(raw, disabled)
+	if !file.tokensMatch {
+		return fmt.Errorf("凭证已更新，请重试")
+	}
+	updated, errUpdate := setCredentialDisabled(file.raw, disabled)
 	if errUpdate != nil {
 		return errUpdate
 	}
-	if errSave := saveAuthFile(callbackID, filepath.Base(targetPath), updated); errSave != nil {
+	name := filepath.Base(file.path)
+	if errSave := saveAuthFile(callbackID, name, updated); errSave != nil {
 		return errSave
 	}
-	logger.Info("auth file %s disabled=%t (vendor=%s)", filepath.Base(targetPath), disabled,
-		credentialVendorLabel(s.registry, raw, filepath.Base(targetPath)))
+	logger.Info("auth file %s disabled=%t (vendor=%s)", name, disabled, file.vendorID)
 	return nil
 }
 

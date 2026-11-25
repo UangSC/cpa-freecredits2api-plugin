@@ -30,6 +30,7 @@ type HostAuth struct {
 	Status      string    `json:"status"`
 	Disabled    bool      `json:"disabled"`
 	Unavailable bool      `json:"unavailable"`
+	Success     int64     `json:"success,omitempty"`
 	RuntimeOnly bool      `json:"runtime_only"`
 	Path        string    `json:"path,omitempty"`
 	ModTime     time.Time `json:"modtime,omitempty"`
@@ -39,7 +40,7 @@ type HostAuth struct {
 // Usable 报告该凭证是否可用于插件自身的操作（模型探测、额度查询、签到、保活、
 // 控制台展示）。
 //
-// 只看 Disabled：它是用户显式关闭，必须尊重。Unavailable 是宿主**路由层**的
+// 只看 Disabled：停用状态必须尊重。Unavailable 是宿主**路由层**的
 // 临时状态（上游限流、超时后打上的冷却），含义是「暂时别把用户对话流量打到
 // 这条凭证上」，并不代表凭证不存在或不可读。把两者混为一谈，一次限流就会让
 // 该供应商整家从模型列表、额度查询里消失——页面表现为「模型没了」「剩余/总额

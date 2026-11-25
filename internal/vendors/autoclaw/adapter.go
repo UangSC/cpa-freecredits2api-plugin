@@ -17,6 +17,7 @@ package autoclaw
 // 内完成阿里云人机验证 → 授权链接 → 粘贴回调 → 换码），也支持直接粘贴凭证。
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -252,7 +253,14 @@ func (v *adapter) ExecuteStream(ctx context.Context, cred *core.Credential, req 
 		return core.ToPluginError(errStream)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return hostbridge.ForwardRawSSE(resp.Body, sink.Emit)
+	return hostbridge.ForwardRawSSE(resp.Body, func(payload []byte) error {
+		if bytes.Contains(payload, []byte(`"code"`)) {
+			if code, message, ok := envelopeError(payload); ok && (code == modelQuotaExhaustedCode || code == modelBusyCode) {
+				return classifyChatFailure(resp, code, core.FirstNonEmpty(message, string(payload)))
+			}
+		}
+		return sink.Emit(payload)
+	})
 }
 
 // ---- 额度与签到 ----

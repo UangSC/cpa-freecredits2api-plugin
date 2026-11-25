@@ -3,17 +3,26 @@ package autoclaw
 // 本文件实现 AutoClaw 的上游错误分类。
 //
 // 分类依据 Agent2API 的 classify()：
-//   - 业务码 410000 → 会话失效（凭证禁用，需重新登录）；
-//   - 余额/额度文案与 HTTP 402 → hard_credit（长冷却）；
-//   - HTTP 429 → 限流（短冷却）；
+//   - 业务码 410000 → 会话失效，交由 CPA 处理认证失败；
+//   - 业务码 810000 → 模型免费额度用尽，按恢复时间冷却该模型；
+//   - 业务码 810001 → 模型繁忙，使用 CPA 的瞬时频控；
+//   - 余额/额度文案与 HTTP 402 → hard_credit，推理按凭证和模型退避；
+//   - HTTP 429 → 模型限流，沿用上游提示或 CPA 的退避；
 //   - 其余按通用状态码分类。
 
 import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"cpa-freecredits2api-plugin/internal/core"
+)
+
+const (
+	modelQuotaExhaustedCode = 810000
+	modelBusyCode           = 810001
+	modelQuotaResetDelay    = 24 * time.Hour
 )
 
 // hardCreditMarkers 是余额/额度类文案（中英文，来自上游实测）。
@@ -33,6 +42,14 @@ var deadMarkers = []string{
 
 // Classify 按 HTTP 状态码、业务码与响应体分类一个上游错误。
 func Classify(status int, code int64, body string) *core.Failure {
+	switch code {
+	case modelQuotaExhaustedCode:
+		limit := failure(http.StatusTooManyRequests, code, body, core.FailureKindQuota)
+		limit.RetryAfter = modelQuotaResetDelay
+		return limit
+	case modelBusyCode:
+		return failure(http.StatusTooManyRequests, code, body, core.FailureKindTransientRateLimit)
+	}
 	if DeadCode(code) {
 		return failure(http.StatusUnauthorized, code, body, core.FailureKindSessionDead)
 	}

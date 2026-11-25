@@ -23,6 +23,7 @@ The project is an independently maintained rework of [cpa-freetier2api-plugin](h
 - **Unified APIs**: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages through CPA, with standard and streaming requests.
 - **Account management**: OAuth, SMS verification, API keys, and credential import, with account aliases, credential refresh, and batch operations.
 - **Model management**: Discovery, enablement, custom aliases, channel tags, and context settings, integrated with CPA routing and failover.
+- **Model backoff**: Track consecutive failures per credential and model. Pause or resume the affected model through the management API.
 - **Quotas and check-ins**: Account quotas, plans, credits, and check-in history, with operations available according to provider capabilities.
 - **Tasks and schedules**: Manual execution, automatic check-in, independent task schedules, background queues, and extensible activity modules.
 - **Embedded console**: A web interface for daily administration, runtime settings, and logs.
@@ -73,7 +74,7 @@ The store selects the platform archive and verifies it against `checksums.txt`.
 
 ### Manual Installation
 
-Download a matching ZIP from [Releases](https://github.com/UangSC/cpa-freecredits2api-plugin/releases), verify it against `checksums.txt` from the same release, and extract the library into the appropriate directory under `plugins.dir`.
+Download a matching ZIP from [Releases](https://github.com/UangSC/cpa-freecredits2api-plugin/releases) and verify it against `checksums.txt` from the same release. Extract the library at the root of the archive into the appropriate location under `plugins.dir`.
 
 | CPA platform | Path relative to `plugins.dir` |
 | --- | --- |
@@ -195,6 +196,16 @@ The default check-in schedule includes `09:00` and `21:00`, plus `auto_checkin_a
 
 When `state_dir` is omitted, use `FREECREDITS2API_PLUGIN_HOME` to specify a directory. Legacy state directory environment variables remain supported as fallbacks. Without a directory override, the default is the `freecredits2api` subdirectory of `~/.cli-proxy-api` if that directory exists, or `~/.freecredits2api-plugin`. CPA stores account credentials; the plugin state directory holds settings, caches, and execution records.
 
+### Model cooldown and automatic disabling
+
+Inference cooldowns apply to one model on one credential by default. CPA can route through the other eligible combinations. CodeBuddy `6004` uses the upstream reset time. AutoClaw `810000` uses `Retry-After` or 24 hours by default. CPA handles `810001` as transient model congestion and session failures through its authentication flow.
+
+Confirmed quota, plan, and account failures are tracked by credential and upstream model ID. Without upstream hints, the first five attempts cool down for 30 minutes, 1 hour, 2 hours, 4 hours, and 8 hours. The initial cooldown uses a supplied hint with a 10-second quota minimum. Later backoff grows from the preceding wait and honors longer upstream hints. Concurrent failures in one cooldown window count once. Successful inference resets the model's failure count. The plugin persists the progress and proof of success.
+
+On the sixth failure, a model with no recorded success is paused for that credential. CPA saves the credential as disabled when it can confirm that there is just one enabled model route, it matches the failing model, and the credential also has no recorded success. Operators can re-enable that credential in the console. Previously successful models can recover after cooldown.
+
+Under the CPA plugin management prefix `/v0/management/plugins/freecredits2api`, `GET /accounts/model-cooldowns` lists backoff and pauses. `POST /accounts/models/resume` accepts the listed `file_id` and `model` to resume that combination. CPA can route to it after any remaining pause cooldown expires, within about a minute.
+
 ## Migration
 
 Back up CPA credentials and plugin state before switching from an older plugin, and disable the old plugin. Reauthorize or explicitly import accounts in the new console. Use separate CPA instances, credential directories, and plugin state directories for parallel deployments.
@@ -210,7 +221,7 @@ python scripts/migrate_auths.py /path/to/old-auths --output-dir /path/to/new-aut
 
 ### Native Build
 
-Use Go 1.22 or later and a C compiler for the target platform.
+Use Go 1.22 or later and a C compiler for the target platform. CI uses Go 1.24.
 
 ```bash
 git clone https://github.com/UangSC/cpa-freecredits2api-plugin.git
@@ -232,6 +243,22 @@ go build -buildmode=c-shared -trimpath -o dist/freecredits2api.dll .
 
 On macOS, use a native C compiler and name the output `freecredits2api.dylib`. Install the resulting library using the platform directory layout above.
 
+### Package Installation Archives
+
+Use `scripts/packstore` to produce `freecredits2api_<version>_<os>_<arch>.zip`. The archive contains a single shared library. This example packages the `0.2.4` Linux amd64 build.
+
+```bash
+go run ./scripts/packstore -lib dist/freecredits2api.so -id freecredits2api \
+  -version 0.2.4 -goos linux -goarch amd64 -out-dir dist/release-v0.2.4
+```
+
+For Windows amd64, use the `.dll` and `-goos windows -goarch amd64`. For Linux arm64, use the arm64 `.so` and `-goarch arm64`. After packaging all targets, generate the checksums for the version directory and copy the matching `registry.json` into it.
+
+```bash
+go run ./scripts/packstore -checksums-dir dist/release-v0.2.4
+cp registry.json dist/release-v0.2.4/
+```
+
 ### Docker Build
 
 With Bash and Docker available, build the Linux library using the repository script. The output is `dist/freecredits2api.so`:
@@ -246,20 +273,23 @@ With Bash and Docker available, build the Linux library using the repository scr
 main.go / cgo.go       Plugin entry points and C ABI
 cpasdk/               CPA ABI and API contracts
 internal/
-  app/                Lifecycle and module composition
+  app/                Lifecycle, inference backoff, and module composition
   admin/              Management API and embedded console
   auth/               Accounts and login sessions
   core/               Shared provider and task interfaces
+  hostbridge/         Host callbacks and HTTP bridge
   vendors/            Provider protocol adapters
   tasks/              Task scheduling and execution
   taskmods/           Independent activity and task modules
   state/              Plugin state persistence
 docs/                 Development documentation and assets
 scripts/              Build, packaging, and migration tools
-tests/                Integration and UI tests
+tests/                Integration, host acceptance, and UI tests
 ```
 
-Run `go test ./...` before submitting code. See the [task module guide](docs/TASK_MODULE_GUIDE.md) for activity and task extensions, and the [CPA SDK notes](cpasdk/README.md) for host contracts.
+Basic checks include `go vet ./...`, `go test ./...`, and `node --test tests/ui/*.test.mjs`. To test an installation archive locally, set `CPA_HOST_EXE` and `CPA_PLUGIN_STORE_ARCHIVE`, place `checksums.txt` next to the archive, and run `node --test tests/host/cpa.test.mjs`.
+
+See the [task module guide](docs/TASK_MODULE_GUIDE.md) for activity and task extensions, and the [CPA SDK notes](cpasdk/README.md) for host contracts.
 
 ## Feedback and Contributions
 

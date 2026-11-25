@@ -4,6 +4,8 @@ FreeCredits2API 通过 `core.TaskModule` 接入活动、限时福利和成长任
 
 新增活动通常只需在 `internal/taskmods/` 实现模块，并在 `internal/app/taskmods.go` 登记。架构测试约束任务引擎和管理接口只依赖任务协议。
 
+任务中心按账号执行模块。CPA 推理入口的模型退避、暂停和恢复在 `internal/app` 的执行路径处理。任务模块沿用这里的账号资格检查、扫描与排程约定。
+
 ---
 
 ## 1. 协议定义（`internal/core/task_module.go`）

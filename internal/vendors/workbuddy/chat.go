@@ -224,11 +224,12 @@ func enrichClassifyError(status int, body string, header http.Header) *core.Fail
 // classifyChatError 优先采用模型恢复时刻，其次是响应头和正文的相对重试时间。
 func classifyChatError(status int, body string, header http.Header) *core.Failure {
 	failure := enrichClassifyError(status, body, header)
-	if failure.HTTPStatus() != status || (status != http.StatusTooManyRequests && status < http.StatusInternalServerError) {
+	mappedStatus := failure.HTTPStatus()
+	if mappedStatus != http.StatusTooManyRequests && (mappedStatus != status || status < http.StatusInternalServerError) {
 		return failure
 	}
 	resetAt, retryAfter := parseChatTiming(body)
-	if status == http.StatusTooManyRequests && failure.Kind == core.FailureKindSoftRate {
+	if mappedStatus == http.StatusTooManyRequests && failure.Kind == core.FailureKindSoftRate {
 		if wait := time.Until(resetAt); wait > 0 {
 			failure.RetryAfter = wait
 			return failure
@@ -374,10 +375,7 @@ func (c *Client) ChatStream(req ChatRequest) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-// transientError 把传输层错误包装成一个「可重试但不罚号」的错误。
-//
-// 与分类错误的区别：Status 为 0，宿主按 502 处理并换号重试，
-// 但不会因它把凭证标记为坏（半截响应不该让账号背锅）。
+// transientError 保留传输错误原文，由共享映射识别取消及建连失败。
 func transientError(err error) *core.Failure {
 	if err == nil {
 		return nil
@@ -1018,8 +1016,12 @@ func Stream(body io.Reader, opts StreamOptions) (StreamStats, error) {
 			continue
 		}
 
-		// 错误帧：原样透传，可选附加提示。上游的错误信息比我们重建的更有价值。
-		if isErrorFrame(payload) {
+		// 已识别的业务错误走结构化流关闭，其余错误帧保留原样。
+		isError, failure := classifyChatFrame(payload)
+		if failure != nil {
+			return stats, failure
+		}
+		if isError {
 			stats.Frames++
 			sawAny = true
 			if errEmit := opts.emit([]byte(attachHint(payload, opts.Hint))); errEmit != nil {
@@ -1090,6 +1092,18 @@ func isErrorFrame(payload string) bool {
 		return false
 	}
 	return len(probe.Error) > 0 && string(probe.Error) != "null"
+}
+
+func classifyChatFrame(payload string) (bool, *core.Failure) {
+	isError := isErrorFrame(payload)
+	if !isError && !strings.Contains(payload, `"code"`) {
+		return false, nil
+	}
+	failure := classifyChatError(http.StatusOK, payload, nil)
+	if failure.Code == creditExhaustedCode || failure.Code == modelFrequencyCode || (isError && failure.Kind == core.FailureKindAccountFault) {
+		return true, failure
+	}
+	return isError, nil
 }
 
 // attachHint 给错误帧附加提示文案（只加不改）。
@@ -1282,7 +1296,11 @@ func Aggregate(body io.Reader) ([]byte, error) {
 		if errUnmarshal := json.Unmarshal([]byte(payload), &frame); errUnmarshal != nil {
 			continue
 		}
-		if isErrorFrame(payload) {
+		isError, failure := classifyChatFrame(payload)
+		if failure != nil {
+			return nil, failure
+		}
+		if isError {
 			return nil, fmt.Errorf("upstream error: %s", core.Truncate(payload, 512))
 		}
 		validEvents++

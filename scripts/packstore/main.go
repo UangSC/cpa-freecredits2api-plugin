@@ -48,7 +48,7 @@ func run(args []string, stdout io.Writer) error {
 	flags.SetOutput(io.Discard)
 
 	libPath := flags.String("lib", "", "动态库路径")
-	pluginID := flags.String("id", "", "插件 id（必须与动态库文件名一致）")
+	pluginID := flags.String("id", "", "插件 ID（用于归档名称和包内动态库文件名）")
 	version := flags.String("version", "", "版本号（tag 去掉前导 v）")
 	goos := flags.String("goos", "", "目标平台")
 	goarch := flags.String("goarch", "", "目标架构")

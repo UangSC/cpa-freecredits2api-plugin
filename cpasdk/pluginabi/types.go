@@ -109,7 +109,17 @@ const (
 	MethodHostAuthGet            = "host.auth.get"
 	MethodHostAuthGetRuntime     = "host.auth.get_runtime"
 	MethodHostAuthSave           = "host.auth.save"
+	MethodHostAuthModels         = "host.auth.models"
 	MethodHostAffinityLookup     = "host.affinity.lookup"
+)
+
+const (
+	// ErrorCodeTransientRateLimit cools the reported model without marking quota exhaustion.
+	ErrorCodeTransientRateLimit = "transient_rate_limit"
+	// ErrorCodeConnectionLifecycle skips credential cooldown for a canceled request or connection.
+	ErrorCodeConnectionLifecycle = "connection_lifecycle"
+	// ErrorCodeTransientTransport keeps pre-response transport failures retryable without cooling the credential.
+	ErrorCodeTransientTransport = "transient_transport"
 )
 
 type Envelope struct {
@@ -129,6 +139,8 @@ type Error struct {
 	// credential and emit a matching Retry-After header. Older hosts ignore the field,
 	// so plugins must never rely on it for correctness.
 	RetryAfterSeconds int `json:"retry_after_seconds,omitempty"`
+	// CredentialScoped applies a 429 quota cooldown to all models on the credential.
+	CredentialScoped bool `json:"credential_scoped,omitempty"`
 }
 
 // Error implements the error interface for Error.

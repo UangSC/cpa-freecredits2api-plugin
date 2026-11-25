@@ -105,6 +105,8 @@ func (s *Service) managementRoutes(prefix string) []pluginapi.ManagementRoute {
 		{Method: "POST", Path: prefix + "/quotas", Description: "批量查询账号额度。"},
 		{Method: "POST", Path: prefix + "/accounts/delete", Description: "删除指定账号的凭证文件（宿主监听 auth 目录，会自动注销该账号）。"},
 		{Method: "POST", Path: prefix + "/accounts/enabled", Description: "批量启用/停用账号（写凭证上的 disabled 标记，不删除文件、不动 token）。"},
+		{Method: "GET", Path: prefix + "/accounts/model-cooldowns", Description: "按凭证读取正在退避或已暂停的模型。"},
+		{Method: "POST", Path: prefix + "/accounts/models/resume", Description: "恢复一条凭证下已暂停的模型。"},
 		{Method: "POST", Path: prefix + "/accounts/add", Description: "添加 API Key 类账号。"},
 		{Method: "POST", Path: prefix + "/accounts/alias", Description: "给账号设置/清除自定义展示别名（别名优先于上游昵称显示）。"},
 		{Method: "POST", Path: prefix + "/accounts/quota-credential", Description: "为当前账号绑定可选墨点授权，合并至该账号同一插件凭证。"},
@@ -181,6 +183,12 @@ func (s *Service) Handle(request []byte) ([]byte, error) {
 
 	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/accounts/enabled"):
 		return core.OKEnvelope(s.handleAccountEnabledRequest(rpc))
+
+	case method == http.MethodGet && matchesManagementPath(rpc.Path, id.ID, "/accounts/model-cooldowns"):
+		return core.OKEnvelope(s.handleModelCooldowns())
+
+	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/accounts/models/resume"):
+		return core.OKEnvelope(s.handleModelResume(rpc))
 
 	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/accounts/add"):
 		return core.OKEnvelope(s.handleAccountAddRequest(rpc))

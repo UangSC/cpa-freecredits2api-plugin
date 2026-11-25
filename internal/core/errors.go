@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
 )
 
 // 本文件定义供应商错误的中立契约。
@@ -82,6 +85,9 @@ func ToPluginError(err error) error {
 	if errors.As(err, &mapped) {
 		return err
 	}
+	if code := transportErrorCode(err); code != "" {
+		return RetryablePluginError(code, err.Error(), http.StatusBadGateway)
+	}
 	var upstreamErr UpstreamError
 	if errors.As(err, &upstreamErr) {
 		status := upstreamErr.HTTPStatus()
@@ -93,7 +99,7 @@ func ToPluginError(err error) error {
 		if upstreamErr.Retryable() {
 			pluginErr.Retryable = true
 		}
-		pluginErr.RetryAfterSeconds = retryAfterSeconds(err)
+		pluginErr.RetryAfterSeconds = retryAfterSeconds(RetryAfterOf(err))
 		return pluginErr
 	}
 	// 宿主 HTTP 桥在非 2xx 时会把整个响应折叠成一条 RPC 错误文本，插件拿不到
@@ -106,10 +112,36 @@ func ToPluginError(err error) error {
 		if failure.Retryable() {
 			pluginErr.Retryable = true
 		}
-		pluginErr.RetryAfterSeconds = retryAfterSeconds(failure)
+		pluginErr.RetryAfterSeconds = retryAfterSeconds(RetryAfterOf(failure))
 		return pluginErr
 	}
 	return RetryablePluginError("upstream_request_failed", err.Error(), http.StatusBadGateway)
+}
+
+// transportErrorCode 识别已确认的传输层失败，让宿主用原生的取消和传输重试策略。
+func transportErrorCode(err error) string {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return pluginabi.ErrorCodeConnectionLifecycle
+	}
+	var failure *Failure
+	if errors.As(err, &failure) && failure.Status != 0 {
+		return ""
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	if message == "context canceled" || message == "read upstream stream: context canceled" {
+		return pluginabi.ErrorCodeConnectionLifecycle
+	}
+	if !strings.Contains(message, "host.http.do") || !strings.Contains(message, "host_call_failed: execute host http request:") {
+		return ""
+	}
+	if strings.HasSuffix(message, ": context canceled") {
+		return pluginabi.ErrorCodeConnectionLifecycle
+	}
+	if strings.HasSuffix(message, ": eof") || strings.HasSuffix(message, ": unexpected eof") ||
+		strings.Contains(message, "client.timeout exceeded while awaiting headers") {
+		return pluginabi.ErrorCodeTransientTransport
+	}
+	return ""
 }
 
 // bridgeStatusMarkers 是宿主桥错误文本里的状态短语到状态码的映射。
@@ -209,9 +241,8 @@ func bridgeTargetHost(raw string) string {
 	return ""
 }
 
-// retryAfterSeconds 把上游明示的等待时长取整成秒（0 表示未给出）。
-func retryAfterSeconds(err error) int {
-	wait := RetryAfterOf(err)
+// retryAfterSeconds 向上取整，确保宿主不会早于等待期限重试。
+func retryAfterSeconds(wait time.Duration) int {
 	if wait <= 0 {
 		return 0
 	}
@@ -225,40 +256,24 @@ func retryAfterSeconds(err error) int {
 // upstreamCode 生成错误码：upstream_<kind>。
 func upstreamCode(kind string) string {
 	kind = strings.TrimSpace(kind)
+	if kind == string(FailureKindTransientRateLimit) {
+		return pluginabi.ErrorCodeTransientRateLimit
+	}
 	if kind == "" {
 		return "upstream_error"
 	}
 	return "upstream_" + kind
 }
 
-// envelope 是 CPA 插件 ABI 的 JSON 信封，与宿主 cpasdk/pluginabi.Envelope 对齐。
-type envelope struct {
-	OK     bool            `json:"ok"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *envelopeError  `json:"error,omitempty"`
-}
-
-// envelopeError 携带可选 HTTP 状态码；宿主据此决定冷却或轮转当前凭证。
-type envelopeError struct {
-	Code       string `json:"code"`
-	Message    string `json:"message"`
-	Retryable  bool   `json:"retryable,omitempty"`
-	HTTPStatus int    `json:"http_status,omitempty"`
-	// RetryAfterSeconds 是上游明示的等待秒数。新宿主会把它翻成 Retry-After
-	// 响应头交给客户端；旧宿主忽略该字段，不影响兼容。
-	RetryAfterSeconds int `json:"retry_after_seconds,omitempty"`
-}
-
 // PluginError 是插件内部的结构化错误：可携带 HTTP 状态码与可重试标记。
 //
-// HTTPStatus 是插件与宿主之间最重要的契约之一：宿主按它决定凭证处置
-// （402 长冷却 / 429 短冷却 / 401 禁用 / 403 软冷却），见 conductor_cooldown.go。
+// 宿主结合 HTTPStatus、Code 和等待秒数决定刷新、模型冷却与轮转。
 type PluginError struct {
 	Code       string
 	Message    string
 	Retryable  bool
 	HTTPStatus int
-	// RetryAfterSeconds 来自上游明示的等待信息（0 表示未给出）。
+	// RetryAfterSeconds 是给宿主的等待时间（0 表示未给出）。
 	RetryAfterSeconds int
 }
 
@@ -280,37 +295,47 @@ func RetryablePluginError(code, message string, status int) *PluginError {
 	return &PluginError{Code: code, Message: message, Retryable: true, HTTPStatus: status}
 }
 
+// WithRetryAfter 返回带指定等待时间的副本，避免改写被多个请求共享的错误。
+func (e *PluginError) WithRetryAfter(wait time.Duration) *PluginError {
+	updated := *e
+	updated.RetryAfterSeconds = retryAfterSeconds(wait)
+	return &updated
+}
+
+// ABIError 统一同步失败信封与流关闭消息的错误字段。
+func (e *PluginError) ABIError() *pluginabi.Error {
+	return &pluginabi.Error{
+		Code:              e.Code,
+		Message:           e.Message,
+		Retryable:         e.Retryable,
+		HTTPStatus:        e.HTTPStatus,
+		RetryAfterSeconds: e.RetryAfterSeconds,
+	}
+}
+
 // OKEnvelope 把任意结果序列化为成功信封。
 func OKEnvelope(value any) ([]byte, error) {
 	raw, errMarshal := json.Marshal(value)
 	if errMarshal != nil {
 		return nil, fmt.Errorf("marshal result: %w", errMarshal)
 	}
-	return json.Marshal(envelope{OK: true, Result: raw})
+	return json.Marshal(pluginabi.Envelope{OK: true, Result: raw})
 }
 
 // ErrorEnvelope 构造失败信封（无 HTTP 状态码，宿主按 500 处理）。
 func ErrorEnvelope(code, message string) []byte {
-	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: message}})
+	raw, _ := json.Marshal(pluginabi.Envelope{OK: false, Error: &pluginabi.Error{Code: code, Message: message}})
 	return raw
 }
 
 // ErrorEnvelopeFromError 把业务错误转成信封并保留 HTTP 状态码。
-//
-// 对 *PluginError 用类型断言而非 errors.As：插件内部没有错误包装链，
-// 断言既够用又能避免把包装过的错误误判成结构化错误。
 func ErrorEnvelopeFromError(err error) []byte {
 	if err == nil {
 		return ErrorEnvelope("plugin_error", "unknown error")
 	}
-	if pluginErr, ok := err.(*PluginError); ok {
-		raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{
-			Code:              pluginErr.Code,
-			Message:           pluginErr.Message,
-			Retryable:         pluginErr.Retryable,
-			HTTPStatus:        pluginErr.HTTPStatus,
-			RetryAfterSeconds: pluginErr.RetryAfterSeconds,
-		}})
+	var pluginErr *PluginError
+	if errors.As(err, &pluginErr) && pluginErr != nil {
+		raw, _ := json.Marshal(pluginabi.Envelope{OK: false, Error: pluginErr.ABIError()})
 		return raw
 	}
 	return ErrorEnvelope("plugin_error", err.Error())
@@ -327,21 +352,22 @@ func ErrorEnvelopeFromError(err error) []byte {
 type FailureKind string
 
 const (
-	FailureKindNone            FailureKind = "none"
-	FailureKindHardCredit      FailureKind = "hard_credit"
-	FailureKindSoftRate        FailureKind = "soft_rate"
-	FailureKindSessionDead     FailureKind = "session_dead"
-	FailureKindNotFound        FailureKind = "not_found"
-	FailureKindServer          FailureKind = "server"
-	FailureKindContentBlocked  FailureKind = "content_blocked"
-	FailureKindChannelRejected FailureKind = "channel_rejected"
-	FailureKindBadParams       FailureKind = "bad_params"
-	FailureKindAccountFault    FailureKind = "account_fault"
-	FailureKindModelBlocked    FailureKind = "model_blocked"
-	FailureKindWAFBlock        FailureKind = "waf_block"
-	FailureKindPromptTooLong   FailureKind = "prompt_too_long"
-	FailureKindImageInvalid    FailureKind = "image_invalid"
-	FailureKindClient          FailureKind = "client"
+	FailureKindNone               FailureKind = "none"
+	FailureKindHardCredit         FailureKind = "hard_credit"
+	FailureKindSoftRate           FailureKind = "soft_rate"
+	FailureKindTransientRateLimit FailureKind = "transient_rate_limit"
+	FailureKindSessionDead        FailureKind = "session_dead"
+	FailureKindNotFound           FailureKind = "not_found"
+	FailureKindServer             FailureKind = "server"
+	FailureKindContentBlocked     FailureKind = "content_blocked"
+	FailureKindChannelRejected    FailureKind = "channel_rejected"
+	FailureKindBadParams          FailureKind = "bad_params"
+	FailureKindAccountFault       FailureKind = "account_fault"
+	FailureKindModelBlocked       FailureKind = "model_blocked"
+	FailureKindWAFBlock           FailureKind = "waf_block"
+	FailureKindPromptTooLong      FailureKind = "prompt_too_long"
+	FailureKindImageInvalid       FailureKind = "image_invalid"
+	FailureKindClient             FailureKind = "client"
 
 	// 兼容通用供应商的短分类。
 	FailureKindCredential FailureKind = "credential"
@@ -393,10 +419,8 @@ func (e *Failure) HTTPStatus() int {
 	if e == nil {
 		return http.StatusBadGateway
 	}
-	// 账号级故障常被上游包在 400（甚至 200 的 SSE 错误帧）里返回。透传原始
-	// 状态码会让宿主错过 403 软冷却分支，被封的账号于是每轮都被重新选中。
-	// 只对 account_fault 强制 403：session_dead 的原始状态码另有语义
-	// （zcode 的 403 要保留，宿主据此走软冷却而不是刷新凭证）。
+	// account_fault 可能出现在 400 或 200 的业务帧中，默认映射为 403。
+	// 推理层可按该分类追加模型退避。session_dead 保留上游鉴权状态，交宿主处理。
 	if e.Kind == FailureKindAccountFault {
 		return http.StatusForbidden
 	}
@@ -408,7 +432,7 @@ func (e *Failure) HTTPStatus() int {
 	switch e.Kind {
 	case FailureKindHardCredit, FailureKindQuota:
 		return http.StatusPaymentRequired
-	case FailureKindSoftRate, FailureKindRateLimit:
+	case FailureKindSoftRate, FailureKindRateLimit, FailureKindTransientRateLimit:
 		return http.StatusTooManyRequests
 	case FailureKindSessionDead, FailureKindCredential:
 		return http.StatusUnauthorized

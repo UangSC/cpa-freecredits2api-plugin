@@ -82,10 +82,17 @@ func (a *App) handleExecutorExecute(request []byte) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(
 		hostbridge.WithCallbackID(context.Background(), prepared.rpc.HostCallbackID), executorRPCTimeout)
 	defer cancel()
+	attempt, errCooldown := a.beginModelAttempt(prepared)
+	if errCooldown != nil {
+		return nil, errCooldown
+	}
 
 	response, errExecute := prepared.vendor.Execute(ctx, prepared.credential, prepared.executeRequest())
 	if errExecute != nil {
-		return nil, core.ToPluginError(errExecute)
+		return nil, core.ToPluginError(a.recordModelFailure(ctx, prepared, attempt, errExecute))
+	}
+	if attempt.observeSuccess && response != nil && ctx.Err() == nil && completedInference(response.Payload, false) {
+		a.recordModelSuccess(attempt)
 	}
 	a.syncCredentialStateAfterExecution(ctx, prepared)
 	return core.OKEnvelope(response)
@@ -104,6 +111,10 @@ func (a *App) handleExecutorExecuteStream(request []byte) ([]byte, error) {
 	if strings.TrimSpace(prepared.rpc.StreamID) == "" {
 		return nil, core.NewPluginError("invalid_request", "stream_id is required for streaming execution", http.StatusBadRequest)
 	}
+	attempt, errCooldown := a.beginModelAttempt(prepared)
+	if errCooldown != nil {
+		return nil, errCooldown
+	}
 
 	// 头部必须同步返回：宿主用它们构造下游响应。
 	streamHeaders := http.Header{
@@ -120,7 +131,7 @@ func (a *App) handleExecutorExecuteStream(request []byte) ([]byte, error) {
 		// 兜底：runStreamExecution 已把供应商代码的 panic 转成错误帧，这里再挡住
 		// 收尾阶段（closeStream）的意外，避免拖垮宿主进程。
 		defer safe.Recover("stream " + prepared.rpc.StreamID)
-		a.runStreamExecution(streamCtx, cancelStream, prepared)
+		a.runStreamExecution(streamCtx, cancelStream, prepared, attempt)
 	}()
 
 	return core.OKEnvelope(rpcExecutorStreamResponse{Headers: streamHeaders})
@@ -147,15 +158,16 @@ func rewritePayloadModel(payload []byte, model string) []byte {
 }
 
 // runStreamExecution 在后台把上游 SSE 转发给宿主流。
-func (a *App) runStreamExecution(streamCtx context.Context, cancelStream context.CancelFunc, prepared preparedExecution) {
+func (a *App) runStreamExecution(streamCtx context.Context, cancelStream context.CancelFunc, prepared preparedExecution, attempt modelAttempt) {
 	ctx := hostbridge.WithCallbackID(streamCtx, prepared.rpc.HostCallbackID)
 	streamID := prepared.rpc.StreamID
 	callbackID := prepared.rpc.HostCallbackID
 
 	sink := &hostStreamSink{
-		callbackID:   callbackID,
-		streamID:     streamID,
-		cancelStream: cancelStream,
+		callbackID:     callbackID,
+		streamID:       streamID,
+		cancelStream:   cancelStream,
+		observeSuccess: attempt.observeSuccess,
 	}
 	errForward := executeStreamSafe(ctx, prepared, sink)
 	if errors.Is(context.Cause(streamCtx), errPluginStopping) {
@@ -164,10 +176,13 @@ func (a *App) runStreamExecution(streamCtx context.Context, cancelStream context
 	}
 	// 下游主动断开会取消上下文，那不是错误，不该发错误帧给客户端。
 	if errForward != nil && streamCtx.Err() == nil {
-		closeStream(callbackID, streamID, errForward)
+		closeStream(callbackID, streamID, a.recordModelFailure(ctx, prepared, attempt, errForward))
 		return
 	}
 	if errForward == nil && streamCtx.Err() == nil {
+		if sink.completed {
+			a.recordModelSuccess(attempt)
+		}
 		a.syncCredentialStateAfterExecution(ctx, prepared)
 	}
 	closeStream(callbackID, streamID, nil)
@@ -190,9 +205,11 @@ func executeStreamSafe(ctx context.Context, prepared preparedExecution, sink cor
 // 供应商只负责产出分片内容，投递（host.stream.emit）与收尾由根层统一做——
 // 这段逻辑宿主契约相关，不该让每个供应商各写一遍。
 type hostStreamSink struct {
-	callbackID   string
-	streamID     string
-	cancelStream context.CancelFunc
+	callbackID     string
+	streamID       string
+	cancelStream   context.CancelFunc
+	completed      bool
+	observeSuccess bool
 }
 
 // Emit 只投递裸数据载荷：宿主的 OpenAI handler 负责 data: 前缀、空行与 [DONE]。
@@ -205,6 +222,9 @@ func (s *hostStreamSink) Emit(payload []byte) error {
 		// 下游断开：取消上游读取，静默收尾（这不是错误）。
 		s.cancelStream()
 		return errEmit
+	}
+	if s.observeSuccess && !s.completed && bytes.Contains(frame, []byte(`"finish_reason"`)) {
+		s.completed = completedInference(frame, true)
 	}
 	return nil
 }
@@ -224,6 +244,29 @@ func executorStreamPayload(payload []byte) []byte {
 		return nil
 	}
 	return payload
+}
+
+// completedInference 接受完整的对话结果或带结束原因的流分片。
+func completedInference(payload []byte, streaming bool) bool {
+	var response struct {
+		Error   *json.RawMessage `json:"error"`
+		Choices []struct {
+			FinishReason string           `json:"finish_reason"`
+			Message      *json.RawMessage `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(payload, &response) != nil || response.Error != nil {
+		return false
+	}
+	for _, choice := range response.Choices {
+		if choice.FinishReason == "error" {
+			continue
+		}
+		if choice.FinishReason != "" || (!streaming && choice.Message != nil) {
+			return true
+		}
+	}
+	return false
 }
 
 // handleResponseNormalizeBefore 仅在跨协议流式转换前补上转换器需要的 SSE 信封。
@@ -378,10 +421,8 @@ func emitStreamChunk(callbackID, streamID string, payload []byte) error {
 
 // closeStream 关闭宿主流；failure 非 nil 时由宿主转为错误帧。
 //
-// 错误帧同时带文本与结构化详情：只发文本时宿主按「无状态码的插件错误」处理，
-// 客户端一律收到 500，凭证也不进冷却——被封的账号会因此每 60-90 秒被重新选中、
-// 白打一次上游。error_detail 让状态码、可重试标记与 Retry-After 一起过桥，
-// 宿主才能按自己的冷却规则处置（文本字段保留，旧宿主行为不变）。
+// 错误帧带可读文本与结构化详情。宿主用 error_detail 中的状态码、错误码和等待提示
+// 处理模型冷却、鉴权和重试。文本字段供只识别旧契约的宿主使用。
 func closeStream(callbackID, streamID string, failure error) {
 	if strings.TrimSpace(streamID) == "" {
 		return
@@ -402,24 +443,16 @@ func closeStream(callbackID, streamID string, failure error) {
 }
 
 // streamErrorDetail 把分类后的错误翻成宿主 ABI 的结构化错误对象。
-//
-// 分类（core.ToPluginError）已经把供应商错误归到 HTTP 状态码与可重试语义上；
-// 拿不到分类结果时返回 nil，由宿主按旧口径处理，不会比修复前更差。
 func streamErrorDetail(errClose error, message string) *pluginabi.Error {
-	pluginErr, okPlugin := core.ToPluginError(errClose).(*core.PluginError)
-	if !okPlugin || pluginErr == nil {
+	var pluginErr *core.PluginError
+	if !errors.As(core.ToPluginError(errClose), &pluginErr) || pluginErr == nil {
 		return nil
 	}
-	if strings.TrimSpace(message) == "" {
-		message = pluginErr.Message
+	detail := pluginErr.ABIError()
+	if strings.TrimSpace(message) != "" {
+		detail.Message = message
 	}
-	return &pluginabi.Error{
-		Code:              pluginErr.Code,
-		Message:           message,
-		Retryable:         pluginErr.Retryable,
-		HTTPStatus:        pluginErr.HTTPStatus,
-		RetryAfterSeconds: pluginErr.RetryAfterSeconds,
-	}
+	return detail
 }
 
 // streamFailureMessage 把错误转成给下游看的消息。

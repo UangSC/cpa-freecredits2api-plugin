@@ -1,12 +1,32 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
 )
+
+func TestTransportFailuresUseHostLifecycleCodes(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		code string
+	}{
+		{context.Canceled, pluginabi.ErrorCodeConnectionLifecycle},
+		{errors.New("read upstream stream: context canceled"), pluginabi.ErrorCodeConnectionLifecycle},
+		{&Failure{Kind: FailureKindServer, Msg: `Post "https://example.test": host.http.do_stream: host_call_failed: execute host http request: Post "https://example.test": EOF`}, pluginabi.ErrorCodeTransientTransport},
+		{&Failure{Kind: FailureKindRateLimit, Status: http.StatusTooManyRequests, Msg: "read upstream stream: context canceled"}, "upstream_rate_limit"},
+	} {
+		failure, ok := ToPluginError(tc.err).(*PluginError)
+		if !ok || failure.Code != tc.code {
+			t.Fatalf("incorrect host error code for %v: %v", tc.err, failure)
+		}
+	}
+}
 
 // TestTrimToBytesStopsAtRuneBoundary 覆盖中文正文被按字节截断的场景：
 // 切点必须回退到字符起始字节，否则日志与面板里会出现 U+FFFD。

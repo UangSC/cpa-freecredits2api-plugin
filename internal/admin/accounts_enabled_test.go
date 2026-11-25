@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 func TestSetCredentialDisabledKeepsOtherFields(t *testing.T) {
@@ -58,6 +59,18 @@ func TestSetCredentialDisabledKeepsOtherFields(t *testing.T) {
 func TestSetCredentialDisabledRejectsNonObject(t *testing.T) {
 	if _, errSet := setCredentialDisabled([]byte(`"not-an-object"`), true); errSet == nil {
 		t.Fatal("非对象凭证必须被拒绝，而不是写回一份坏文件")
+	}
+}
+
+func TestSaveAuthDisabledRejectsAReplacedToken(t *testing.T) {
+	service := newService(t)
+	service.registry = newDeleteTestRegistry(t)
+	const name = "traecn-u-1.json"
+	path := writeAuthFile(t, t.TempDir(), name, map[string]any{"vendor": "traecn", "uid": "u-1", "token": "new-token"})
+	entry := core.HostAuth{Name: name, AuthIndex: "1"}
+	old := []byte(`{"vendor":"traecn","uid":"u-1","token":"old-token"}`)
+	if err := service.SaveAuthDisabled("callback", entry, old, path, true); err == nil || err.Error() != "凭证已更新，请重试" {
+		t.Fatalf("expected a stale credential error, got %v", err)
 	}
 }
 

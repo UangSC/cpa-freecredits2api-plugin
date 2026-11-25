@@ -773,6 +773,22 @@ type HostAuthGetRuntimeResponse struct {
 	Auth HostAuthFileEntry `json:"auth"`
 }
 
+// HostAuthModelsRequest identifies the credential whose registered models are requested.
+type HostAuthModelsRequest struct {
+	AuthIndex string `json:"auth_index,omitempty"`
+}
+
+type HostAuthModelsResponse struct {
+	Credentials []HostAuthModels `json:"credentials"`
+}
+
+type HostAuthModels struct {
+	ID        string   `json:"id"`
+	AuthIndex string   `json:"auth_index"`
+	Provider  string   `json:"provider"`
+	Models    []string `json:"models"`
+}
+
 // HostAuthSaveRequest asks the host to persist credential JSON to a physical auth file.
 type HostAuthSaveRequest struct {
 	// Name is the target auth file name. It must end with .json.

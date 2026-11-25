@@ -23,6 +23,7 @@ FreeCredits2API 是面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProx
 - **统一 API 接入**：通过 CPA 提供 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 接口，支持普通与流式请求。
 - **多账号管理**：提供 OAuth、短信验证、API Key 和凭证导入等接入方式，支持账号别名、凭证更新与批量管理。
 - **模型管理**：支持模型发现、启停、自定义别名、渠道标识与上下文设置，接入 CPA 的多账号路由和故障转移。
+- **模型退避**：按凭证和模型记录连续失败，支持暂停与恢复单个模型。
 - **额度与签到**：集中查看账号额度、套餐、积分和签到记录，并按供应商能力提供相关操作。
 - **任务与排程**：支持手动执行、自动签到、独立任务排程和后台队列，活动任务可通过模块扩展。
 - **内嵌控制台**：在 Web 界面中完成日常管理、运行设置和日志查看。
@@ -73,7 +74,7 @@ plugins:
 
 ### 手动安装
 
-从 [Releases](https://github.com/UangSC/cpa-freecredits2api-plugin/releases) 下载匹配平台的 ZIP，使用同一版本的 `checksums.txt` 校验后，将动态库解压到 `plugins.dir` 下的对应目录。
+从 [Releases](https://github.com/UangSC/cpa-freecredits2api-plugin/releases) 下载匹配平台的 ZIP。使用同一版本的 `checksums.txt` 校验后，将归档根目录中的动态库解压到 `plugins.dir` 下的对应位置。
 
 | CPA 运行平台 | 安装位置（相对 `plugins.dir`） |
 | --- | --- |
@@ -195,6 +196,16 @@ curl "$CPA_BASE_URL/v1/messages" \
 
 未指定 `state_dir` 时，可通过环境变量 `FREECREDITS2API_PLUGIN_HOME` 指定目录，旧版状态目录环境变量保留为兼容回退。未配置目录覆盖项时，若用户主目录下已有 `.cli-proxy-api`，则使用其 `freecredits2api` 子目录，否则使用 `~/.freecredits2api-plugin`。账号凭证由 CPA 保存，插件状态目录用于保存设置、缓存和运行记录。
 
+### 模型冷却与自动停用
+
+推理冷却默认作用于一条凭证下的一个模型，由 CPA 调度其它可用组合。CodeBuddy `6004` 使用上游给出的恢复时间。AutoClaw `810000` 优先使用 `Retry-After`，缺省等待 24 小时。`810001` 走 CPA 的模型繁忙处理。会话失效继续走 CPA 的认证流程。
+
+明确的额度、套餐或账号故障按凭证与上游模型 ID 记录连续失败。没有上游提示时，前五轮依次冷却 30 分钟、1 小时、2 小时、4 小时和 8 小时。有提示时，首次采用上游时长（配额冷却下限为 10 秒），后续从上一轮实际等待时长增长，且至少保留上游给出的等待时间。同一冷却窗口的并发失败只计一轮，正常推理重置该模型的失败计数。进度和成功记录随插件状态保存。
+
+第六轮仍失败且该模型没有成功记录时，插件暂停该凭证的这一模型。CPA 能确认只有一条启用的模型路由、它对应当前失败模型且凭证也没有成功记录时，插件通过 CPA 停用整条凭证，可在控制台重新启用。曾成功的模型继续按冷却计划恢复。
+
+CPA 插件管理前缀 `/v0/management/plugins/freecredits2api` 下的 `GET /accounts/model-cooldowns` 可查看退避和暂停。通过 `POST /accounts/models/resume` 提交列表中的 `file_id` 和 `model` 可恢复对应模型，CPA 已记录的暂停冷却到期后会重新调度，最长约一分钟。
+
 ## 旧版迁移
 
 切换旧版插件前，请备份 CPA 凭证和插件状态，并停用旧插件。账号可在新控制台重新授权或显式导入；并行部署时使用独立的 CPA 实例、凭证目录和插件状态目录。
@@ -210,7 +221,7 @@ python scripts/migrate_auths.py /path/to/old-auths --output-dir /path/to/new-aut
 
 ### 本机构建
 
-需要 Go 1.22 或更高版本，以及目标平台可用的 C 编译器。
+需要 Go 1.22 或更高版本，以及目标平台可用的 C 编译器。CI 使用 Go 1.24。
 
 ```bash
 git clone https://github.com/UangSC/cpa-freecredits2api-plugin.git
@@ -232,6 +243,22 @@ go build -buildmode=c-shared -trimpath -o dist/freecredits2api.dll .
 
 macOS 使用本机 C 编译器，将输出文件名设为 `freecredits2api.dylib`。构建完成后，按安装目录规则放置动态库。
 
+### 生成安装归档
+
+使用 `scripts/packstore` 生成 `freecredits2api_<版本>_<平台>_<架构>.zip`。包内只包含一个动态库。以 `0.2.4` 的 Linux amd64 构建为例。
+
+```bash
+go run ./scripts/packstore -lib dist/freecredits2api.so -id freecredits2api \
+  -version 0.2.4 -goos linux -goarch amd64 -out-dir dist/release-v0.2.4
+```
+
+Windows amd64 使用 `.dll` 和 `-goos windows -goarch amd64`，Linux arm64 使用对应架构的 `.so` 和 `-goarch arm64`。全部目标打包完成后，在同一个版本目录汇总校验和，并复制该版本的 `registry.json`。
+
+```bash
+go run ./scripts/packstore -checksums-dir dist/release-v0.2.4
+cp registry.json dist/release-v0.2.4/
+```
+
 ### Docker 构建
 
 已安装 Bash 和 Docker 的环境可使用仓库脚本构建 Linux 动态库，产物为 `dist/freecredits2api.so`：
@@ -246,20 +273,23 @@ macOS 使用本机 C 编译器，将输出文件名设为 `freecredits2api.dylib
 main.go / cgo.go       插件入口与 C ABI
 cpasdk/               CPA ABI 与 API 契约
 internal/
-  app/                生命周期与模块装配
+  app/                生命周期、推理退避与模块装配
   admin/              管理接口与内嵌控制台
   auth/               账号与登录会话
   core/               供应商与任务公共接口
+  hostbridge/         宿主回调与 HTTP 桥接
   vendors/            供应商协议适配
   tasks/              任务调度与执行引擎
   taskmods/           独立活动与任务模块
   state/              插件状态持久化
 docs/                 开发文档与资源
 scripts/              构建、打包与迁移工具
-tests/                集成与界面测试
+tests/                集成、宿主验收与界面测试
 ```
 
-提交代码前运行 `go test ./...`。扩展活动与任务模块请参阅[任务模块开发指南](docs/TASK_MODULE_GUIDE.md)，宿主接入契约见 [CPA SDK 说明](cpasdk/README.md)。
+基础检查包括 `go vet ./...`、`go test ./...` 和 `node --test tests/ui/*.test.mjs`。在本机验证安装归档时，设置 `CPA_HOST_EXE` 和 `CPA_PLUGIN_STORE_ARCHIVE` 后运行 `node --test tests/host/cpa.test.mjs`，并将归档与 `checksums.txt` 放在同一目录。
+
+扩展活动与任务模块请参阅[任务模块开发指南](docs/TASK_MODULE_GUIDE.md)，宿主接入契约见 [CPA SDK 说明](cpasdk/README.md)。
 
 ## 反馈与贡献
 

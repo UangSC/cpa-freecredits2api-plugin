@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 	"cpa-freecredits2api-plugin/internal/core"
 )
 
@@ -46,7 +47,8 @@ type Host struct {
 	authJSON map[string]string
 	// authPaths 是 auth_index → 宿主返回的凭证文件路径（host.auth.get 的 path）。
 	// 真实宿主的 path 不保证绝对：以相对 auth-dir 启动的宿主会返回相对路径。
-	authPaths map[string]string
+	authPaths  map[string]string
+	authModels map[string][]string
 	// upstream 是出站请求的应答函数（按 method + url 匹配）。
 	upstream func(method, url, body string) UpstreamResponse
 	// upstreamCalls 记录出站请求次数（供 singleflight 类断言）。
@@ -64,9 +66,10 @@ type Host struct {
 // New 构造一个 Fake Host。
 func New() *Host {
 	return &Host{
-		authJSON:  map[string]string{},
-		authPaths: map[string]string{},
-		streams:   map[string]*Stream{},
+		authJSON:   map[string]string{},
+		authPaths:  map[string]string{},
+		authModels: map[string][]string{},
+		streams:    map[string]*Stream{},
 		upstream: func(string, string, string) UpstreamResponse {
 			return UpstreamResponse{Status: http.StatusNotFound, Body: `{"code":404,"msg":"not stubbed"}`}
 		},
@@ -95,6 +98,8 @@ func (h *Host) Call(callbackID, method string, payload any) (json.RawMessage, er
 		return h.handleAuthGet(payload)
 	case pluginabi.MethodHostAuthSave:
 		return h.handleAuthSave(payload)
+	case pluginabi.MethodHostAuthModels:
+		return h.handleAuthModels(payload)
 	case pluginabi.MethodHostStreamEmit:
 		return h.handleStreamEmit(payload)
 	case pluginabi.MethodHostStreamClose:
@@ -127,6 +132,31 @@ func (h *Host) AddAccount(authIndex, name, credentialJSON string) {
 	h.authFiles = append(h.authFiles, core.HostAuth{
 		ID: name, AuthIndex: authIndex, Name: name, Provider: core.ProviderKey, Label: name,
 	})
+}
+
+// SetAuthModels supplies the model IDs registered by CPA for a test credential.
+func (h *Host) SetAuthModels(authIndex string, models ...string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.authModels[authIndex] = append([]string(nil), models...)
+}
+
+func (h *Host) handleAuthModels(payload any) (json.RawMessage, error) {
+	var req pluginapi.HostAuthModelsRequest
+	if err := json.Unmarshal(mustMarshal(payload), &req); err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	entries := make([]pluginapi.HostAuthModels, 0, 1)
+	for _, entry := range h.authFiles {
+		if req.AuthIndex == "" || req.AuthIndex == entry.AuthIndex {
+			entries = append(entries, pluginapi.HostAuthModels{
+				ID: entry.ID, AuthIndex: entry.AuthIndex, Provider: entry.Provider, Models: h.authModels[entry.AuthIndex],
+			})
+		}
+	}
+	return marshalJSON(pluginapi.HostAuthModelsResponse{Credentials: entries})
 }
 
 // SetAccountCredential 覆盖某个账号的凭证 JSON，账号身份（文件名）不变。

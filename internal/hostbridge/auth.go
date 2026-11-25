@@ -268,6 +268,7 @@ func normalizeAuthKey(raw string) string {
 }
 
 func mergeHostAuthEntry(target *core.HostAuth, source core.HostAuth) {
+	target.Success = max(target.Success, source.Success)
 	if target.AuthIndex == "" && source.AuthIndex != "" {
 		target.AuthIndex = source.AuthIndex
 	}

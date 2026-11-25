@@ -2,9 +2,35 @@ package autoclaw
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"cpa-freecredits2api-plugin/cpasdk/pluginabi"
+	"cpa-freecredits2api-plugin/internal/core"
 )
+
+func TestChatModelLimitUsesNativeCooldown(t *testing.T) {
+	for _, tc := range []struct {
+		code     int64
+		header   http.Header
+		wantCode string
+		wait     time.Duration
+	}{
+		{modelQuotaExhaustedCode, nil, "upstream_quota", 24 * time.Hour},
+		{modelQuotaExhaustedCode, http.Header{"Retry-After": {"120"}}, "upstream_quota", 2 * time.Minute},
+		{modelBusyCode, http.Header{"Retry-After": {"30"}}, pluginabi.ErrorCodeTransientRateLimit, 30 * time.Second},
+	} {
+		response := &http.Response{StatusCode: http.StatusForbidden, Header: tc.header}
+		failure := classifyChatFailure(response, tc.code, "upstream model refused this attempt")
+		mapped := core.ToPluginError(failure).(*core.PluginError)
+		if mapped.HTTPStatus != http.StatusTooManyRequests || mapped.Code != tc.wantCode || mapped.ABIError().CredentialScoped ||
+			mapped.RetryAfterSeconds != int(tc.wait/time.Second) {
+			t.Fatalf("incorrect model cooldown for %d: %+v", tc.code, mapped)
+		}
+	}
+}
 
 // preparePayload 跑一遍 prepareBody 并解回 map（出站体的唯一入口就是 prepareBody）。
 func preparePayload(t *testing.T, body, model string) map[string]any {

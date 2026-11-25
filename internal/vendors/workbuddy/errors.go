@@ -16,23 +16,23 @@ import (
 //
 // 为什么需要它：上游用 HTTP 状态码 + 业务 code + 自然语言消息三种手段混合表达错误，
 // 而同一种 HTTP 状态码可能对应完全不同的处置（例如 429 既可能是限流、也可能是余额耗尽）。
-// 分类结果决定：是冷却这个账号、禁用这个账号、只避让这个模型，还是根本不罚账号。
+// 分类结果用于认证、请求错误返回与推理模型退避。
 //
 // 判定顺序是有语义的，不能重排（见 Classify 的注释）。
 
 // 本供应商使用的错误类别（与 core.FailureKind 一一对应）：
 //   - none：表示成功。
-//   - hard_credit：余额耗尽（402 或余额关键词）→ 长冷却到次日。
-//   - soft_rate：限流（429）→ 短冷却，指数退避。
-//   - session_dead：会话失效（12153）→ 禁用，需重新登录。
-//   - not_found：上游偶发 404 → 固定短冷却，不累计熔断。
-//   - server：上游 5xx → 计入熔断。
+//   - hard_credit：余额耗尽（402 或业务码 14018），推理失败按当前凭证的模型冷却。
+//   - soft_rate：模型限流（429），优先使用上游恢复时间。
+//   - session_dead：会话失效（12153），由 CPA 处理认证失败。
+//   - not_found：上游 404，由 CPA 冷却当前模型。
+//   - server：上游 5xx，由 CPA 按瞬时故障处理。
 //   - content_blocked：内容策略拦截 → 不罚账号，可降级重试。
 //   - channel_rejected：渠道校验拦截（11128）→ 请求级，不罚号、不换号，保留上游说明。
 //   - bad_params：参数非法 → 不罚账号，但仍换号重试。
-//   - account_fault：账号级故障（request illegal / trial 未激活）→ 冷却轮换。
+//   - account_fault：账号级故障（request illegal / trial 未激活），推理按凭证和模型退避。
 //   - model_blocked：该后端无此模型（11102）→ 按（账号, 模型）避让。
-//   - waf_block：上游 WAF 拦截（403 非业务信封）→ 账号软冷却。
+//   - waf_block：上游 WAF 拦截（403 非业务信封），由 CPA 处理模型冷却。
 //   - prompt_too_long：上下文超限（11115）→ 请求级，不罚号不轮转。
 //   - image_invalid：图片无效 → 请求级，不罚号不轮转。
 //   - client：其他 4xx / 业务错误。
@@ -72,6 +72,8 @@ const (
 	modelBlockCode = "11102"
 	// channelRejectedCode 是渠道校验失败（非官方客户端）。
 	channelRejectedCode = "11128"
+	creditExhaustedCode = "14018"
+	modelFrequencyCode  = "6004"
 )
 
 const resetTimestampPattern = `(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\s+UTC([+-]\d+(?::\d+)?))?`
@@ -89,12 +91,9 @@ var (
 //
 // 判定顺序是关键，尤其这几条：
 //   - 11102 必须最先：它可能是 400 也可能是 404，晚判会被 404 分支吞掉；
-//   - 429 必须早于 hardMarkers：429 的正文高频携带 "quota exceeded"/"额度不足"
-//     这类跨计费与限流两界的措辞，hardMarkers 先判会把限流误归余额耗尽，
-//     白扔一个号约 12 小时。真正的余额耗尽由 402 或业务码 14018 捕获；
-//   - 11115（上下文超限）与 11128（渠道校验）必须早于 404/5xx/WAF/内容策略：
-//     它们是请求级错误，罚账号是错的；
-//   - accountFault 必须早于 429：账号被封的措辞里也可能带限流字样。
+//   - 429 必须早于 hardMarkers：只有明确的 402 或业务码 14018 表示余额耗尽；
+//   - 11115（上下文超限）与 11128（渠道校验）应保留请求级语义；
+//   - 会话和账号故障优先于通用的限流分类。
 func Classify(status int, body string) *core.Failure {
 	lower := strings.ToLower(body)
 
@@ -111,11 +110,7 @@ func Classify(status int, body string) *core.Failure {
 		return &core.Failure{Kind: core.FailureKindChannelRejected, Status: http.StatusBadRequest,
 			Code: channelRejectedCode, Msg: channelRejectedMessage(body)}
 	}
-	// 1) 余额耗尽（明确的 402）。
-	if status == http.StatusPaymentRequired {
-		return &core.Failure{Kind: core.FailureKindHardCredit, Status: status, Msg: body}
-	}
-	// 2) 会话失效。
+	// 会话失效。
 	if core.ContainsAny(lower, sessionDeadMarkers) {
 		return &core.Failure{Kind: core.FailureKindSessionDead, Status: status, Msg: body}
 	}
@@ -128,8 +123,17 @@ func Classify(status int, body string) *core.Failure {
 	if core.ContainsAny(lower, accountFaultMarkers) {
 		return &core.Failure{Kind: core.FailureKindAccountFault, Status: status, Msg: body}
 	}
-	// 4) 429 + 业务码 14018 表示余额真的耗尽。
-	if status == http.StatusTooManyRequests && hasBusinessCode(body, "14018") {
+	// 4) 同一业务码可能来自 HTTP 错误，也可能来自已建立的 SSE 连接。
+	// 普通 429 由 CPA 按当前凭证的模型应用 Retry-After。
+	if strings.Contains(body, creditExhaustedCode) && hasBusinessCode(body, creditExhaustedCode) {
+		return &core.Failure{Kind: core.FailureKindHardCredit, Status: http.StatusTooManyRequests,
+			Code: creditExhaustedCode, Msg: body}
+	}
+	if strings.Contains(body, modelFrequencyCode) && hasBusinessCode(body, modelFrequencyCode) {
+		return &core.Failure{Kind: core.FailureKindSoftRate, Status: http.StatusTooManyRequests,
+			Code: modelFrequencyCode, Msg: body}
+	}
+	if status == http.StatusPaymentRequired {
 		return &core.Failure{Kind: core.FailureKindHardCredit, Status: status, Msg: body}
 	}
 	// 5) 普通限流。
@@ -408,7 +412,7 @@ func codeMarker(lower, code string) bool {
 	return strings.Contains(lower, `code=`+code)
 }
 
-// hasBusinessCode 递归查找正文里是否有 code 字段精确等于 want。
+// hasBusinessCode 从上游错误信封的 code、error、data 字段识别业务码。
 func hasBusinessCode(body, want string) bool {
 	var payload any
 	if errUnmarshal := json.Unmarshal([]byte(body), &payload); errUnmarshal != nil {
@@ -425,11 +429,7 @@ func scanBusinessCode(value any, want string) bool {
 				return true
 			}
 		}
-		for _, nested := range typed {
-			if scanBusinessCode(nested, want) {
-				return true
-			}
-		}
+		return scanBusinessCode(typed["error"], want) || scanBusinessCode(typed["data"], want)
 	case []any:
 		for _, item := range typed {
 			if scanBusinessCode(item, want) {

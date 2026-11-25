@@ -30,8 +30,15 @@ func (v *writeStubVendor) ModelPrefix() string { return "" }
 
 func (v *writeStubVendor) Match(string, string, map[string]any) bool { return true }
 
-func (v *writeStubVendor) Parse([]byte, string) (*core.Credential, error) {
-	return nil, fmt.Errorf("not used in this test")
+func (v *writeStubVendor) Parse(raw []byte, _ string) (*core.Credential, error) {
+	var fields struct {
+		UID   string `json:"uid"`
+		Token string `json:"jwt_token"`
+	}
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	return &core.Credential{UID: fields.UID, Token: fields.Token}, nil
 }
 
 func (v *writeStubVendor) StaticModels(context.Context) ([]pluginapi.ModelInfo, error) {
@@ -145,6 +152,84 @@ func TestSaveRefreshedCredentialAlignsHostAndDisk(t *testing.T) {
 			}
 			if handed.Name != writeTestFile {
 				t.Fatalf("host name = %q", handed.Name)
+			}
+		})
+	}
+}
+
+func TestSaveRefreshedCredentialPreservesAutomaticDisable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), writeTestFile)
+	disabled := []byte(`{"vendor":"zcode","uid":"zcode-eyjh---1kc8","jwt_token":"t","disabled":true}`)
+	if err := os.WriteFile(path, disabled, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hostbridge.Configure(func(string, string, any) (json.RawMessage, error) {
+		t.Error("refresh attempted to save a disabled credential")
+		return json.RawMessage(`{}`), nil
+	})
+	t.Cleanup(func() { hostbridge.Configure(nil) })
+	vendor := &writeTestVendor{writeStubVendor: &writeStubVendor{
+		mergeStorageJSON: func(original []byte) ([]byte, error) { return original, nil },
+	}}
+	app := &App{}
+	app.saveRefreshedCredential(context.Background(), "cb-1", vendor, core.HostAuth{Name: writeTestFile, Path: path}, []byte(writeTestRaw), nil, path)
+	updated, err := os.ReadFile(path)
+	if err != nil || !sameJSON(t, updated, disabled) {
+		t.Fatalf("refresh did not preserve disabled state: %v", err)
+	}
+}
+
+func TestSaveRefreshedCredentialRespectsConcurrentChanges(t *testing.T) {
+	cases := []struct {
+		name     string
+		onDisk   string
+		wantSave bool
+	}{
+		{name: "保留最新代理设置", onDisk: `{"vendor":"zcode","uid":"zcode-eyjh---1kc8","jwt_token":"t","proxy_url":"http://new-proxy.example"}`, wantSave: true},
+		{name: "保留重新登录后的令牌", onDisk: `{"vendor":"zcode","uid":"zcode-eyjh---1kc8","jwt_token":"new-login"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), writeTestFile)
+			if err := os.WriteFile(path, []byte(tc.onDisk), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var saved pluginapi.HostAuthSaveRequest
+			hostbridge.Configure(func(_ string, method string, payload any) (json.RawMessage, error) {
+				if method != pluginabi.MethodHostAuthSave {
+					return nil, fmt.Errorf("unexpected host method %s", method)
+				}
+				request, ok := payload.(pluginapi.HostAuthSaveRequest)
+				if !ok {
+					return nil, fmt.Errorf("unexpected host save payload %T", payload)
+				}
+				saved = request
+				return json.RawMessage(`{}`), nil
+			})
+			t.Cleanup(func() { hostbridge.Configure(nil) })
+			vendor := &writeTestVendor{writeStubVendor: &writeStubVendor{
+				mergeStorageJSON: func(original []byte) ([]byte, error) {
+					var payload map[string]json.RawMessage
+					if err := json.Unmarshal(original, &payload); err != nil {
+						return nil, err
+					}
+					payload["jwt_token"] = json.RawMessage(`"refreshed"`)
+					return json.Marshal(payload)
+				},
+			}}
+			app := &App{}
+			app.saveRefreshedCredential(context.Background(), "cb-1", vendor, core.HostAuth{Name: writeTestFile}, []byte(writeTestRaw), nil, path)
+			disk, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantSave {
+				want := []byte(`{"vendor":"zcode","uid":"zcode-eyJh---1KC8","jwt_token":"refreshed","proxy_url":"http://new-proxy.example"}`)
+				if !sameJSON(t, saved.JSON, want) || !sameJSON(t, disk, want) {
+					t.Fatalf("保存后应保留最新设置，宿主 %s，文件 %s", saved.JSON, disk)
+				}
+			} else if len(saved.JSON) != 0 || !sameJSON(t, disk, []byte(tc.onDisk)) {
+				t.Fatal("过期的续期结果覆盖了重新登录后的凭证")
 			}
 		})
 	}

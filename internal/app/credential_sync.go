@@ -137,40 +137,43 @@ func (a *App) currentCredentialState(ctx context.Context, prepared preparedExecu
 		if fileID != "" && !strings.EqualFold(fileID, core.FileIDFromFileName(entry.Name)) {
 			continue
 		}
-		raw, ok := credentialStateJSON(ctx, prepared.rpc.HostCallbackID, entry)
+		response, ok := credentialStateResponse(ctx, prepared.rpc.HostCallbackID, entry)
 		if !ok || ctx.Err() != nil {
 			return core.HostAuth{}, nil, nil, false
 		}
-		credential, ok := a.parseCredentialState(raw, entry.Name, prepared.vendor.ID())
+		credential, ok := a.parseCredentialState(response.JSON, entry.Name, prepared.vendor.ID())
 		if !ok {
 			return core.HostAuth{}, nil, nil, false
 		}
-		return entry, credential, raw, true
+		if response.Path != "" {
+			entry.Path = hostbridge.ResolveAuthPath(response.Path)
+		}
+		return entry, credential, response.JSON, true
 	}
 	return core.HostAuth{}, nil, nil, false
 }
 
 // 使用宿主原有 get 契约，但不调用会原样记录桥错误的降级包装函数。
-func credentialStateJSON(ctx context.Context, callbackID string, entry core.HostAuth) ([]byte, bool) {
+func credentialStateResponse(ctx context.Context, callbackID string, entry core.HostAuth) (pluginapi.HostAuthGetResponse, bool) {
+	var response pluginapi.HostAuthGetResponse
 	index := credentialStateAuthIndex(entry)
 	if index == "" || ctx.Err() != nil {
-		return nil, false
+		return response, false
 	}
 	raw, err := hostbridge.CallCtx(hostbridge.WithCallbackID(ctx, callbackID), pluginabi.MethodHostAuthGet,
 		pluginapi.HostAuthGetRequest{AuthIndex: index})
 	if err != nil || ctx.Err() != nil {
 		logger.Info("credential state sync deferred (stage=get)")
-		return nil, false
+		return response, false
 	}
-	var response pluginapi.HostAuthGetResponse
 	if json.Unmarshal(raw, &response) != nil || len(response.JSON) == 0 {
-		return nil, false
+		return response, false
 	}
 	if response.AuthIndex != "" && response.AuthIndex != index {
-		return nil, false
+		return response, false
 	}
 	if response.Name != "" && response.Name != entry.Name {
-		return nil, false
+		return response, false
 	}
-	return response.JSON, true
+	return response, true
 }

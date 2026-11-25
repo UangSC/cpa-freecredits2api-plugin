@@ -220,11 +220,12 @@ func Chat(ctx context.Context, baseURL string, req ChatRequest) ([]byte, error) 
 		return nil, core.WithHTTPRateLimitHint(failure, resp)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, core.WithHTTPRateLimitHint(Classify(resp.StatusCode, 0, string(body)), resp)
+		code, _, _ := envelopeError(body)
+		return nil, classifyChatFailure(resp, code, string(body))
 	}
 	// 业务信封形态（{"code","msg","data"}）：非 0 业务码按错误处理。
 	if code, msg, ok := envelopeError(body); ok {
-		return nil, Classify(resp.StatusCode, code, msg)
+		return nil, classifyChatFailure(resp, code, core.FirstNonEmpty(msg, string(body)))
 	}
 	return body, nil
 }
@@ -247,9 +248,20 @@ func ChatStream(ctx context.Context, baseURL string, req ChatRequest) (*http.Res
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer func() { _ = resp.Body.Close() }()
 		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return nil, core.WithHTTPRateLimitHint(Classify(resp.StatusCode, 0, string(payload)), resp)
+		code, _, _ := envelopeError(payload)
+		return nil, classifyChatFailure(resp, code, string(payload))
 	}
 	return resp, nil
+}
+
+func classifyChatFailure(resp *http.Response, code int64, message string) *core.Failure {
+	classified := Classify(resp.StatusCode, code, message)
+	if code == modelQuotaExhaustedCode || code == modelBusyCode {
+		if wait := core.HTTPRetryAfter(resp.Header, time.Now()); wait > 0 {
+			classified.RetryAfter = wait
+		}
+	}
+	return core.WithHTTPRateLimitHint(classified, resp)
 }
 
 // doChat 发起一次非流式对话请求。

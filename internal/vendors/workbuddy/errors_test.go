@@ -207,6 +207,30 @@ func TestModelRateLimitReportsResetTimeToHost(t *testing.T) {
 	}
 }
 
+func TestChatBusinessErrorsInSSE(t *testing.T) {
+	for _, tc := range []struct {
+		payload string
+		code    string
+		kind    core.FailureKind
+	}{
+		{`{"error":{"data":{"code":14018,"msg":"Credits exhausted"}}}`, creditExhaustedCode, core.FailureKindHardCredit},
+		{`{"code":6004,"msg":"model frequency limit"}`, modelFrequencyCode, core.FailureKindSoftRate},
+	} {
+		input := "data: " + tc.payload + "\n\n"
+		_, streamErr := Stream(strings.NewReader(input), StreamOptions{})
+		_, aggregateErr := Aggregate(strings.NewReader(input))
+		for _, err := range []error{streamErr, aggregateErr} {
+			failure, ok := err.(*core.Failure)
+			if !ok || failure.Code != tc.code || failure.HTTPStatus() != http.StatusTooManyRequests || failure.Kind != tc.kind {
+				t.Fatalf("incorrect classification for %s: %v", tc.code, err)
+			}
+			if mapped := core.ToPluginError(failure).(*core.PluginError); mapped.ABIError().CredentialScoped {
+				t.Fatalf("error %s incorrectly cools the entire credential", tc.code)
+			}
+		}
+	}
+}
+
 func TestChatReportsStructuredRetryPolicyToHost(t *testing.T) {
 	const rateLimited = `{"code":14003,"msg":"Too many requests, please try again later.","retry_policy":{"retry":true,"retry_after":30},"extError":{"type":"too_many_requests"}}`
 	const temporaryFailure = `{"code":11134,"msg":"Please try again later.","retry_policy":{"retry":true,"retry_after":20}}`

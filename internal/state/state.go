@@ -10,6 +10,7 @@ package state
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,6 +151,8 @@ type State struct {
 	// 拿它做键会让别名在重登后丢失，或串到另一个账号头上。FileID 只由凭证
 	// 文件名决定，token 刷新与重登都不动它（见 core.Credential.FileID）。
 	AccountAliases map[string]string `json:"account_aliases,omitempty"`
+	// ModelCooldowns 按凭证 FileID 和上游模型分别保存成功记录和退避状态。
+	ModelCooldowns map[string]map[string]ModelCooldown `json:"model_cooldowns,omitempty"`
 
 	// RestartPending 标记「已有模型变更，但宿主的模型注册表尚未刷新」。
 	RestartPending bool `json:"restart_pending,omitempty"`
@@ -361,6 +364,10 @@ func clone(state *State) State {
 	for key, value := range state.AccountAliases {
 		out.AccountAliases[key] = value
 	}
+	out.ModelCooldowns = maps.Clone(state.ModelCooldowns)
+	for fileID, models := range out.ModelCooldowns {
+		out.ModelCooldowns[fileID] = maps.Clone(models)
+	}
 	return out
 }
 
@@ -383,12 +390,16 @@ func (s *Store) Mutate(mutate func(*State)) {
 		s.cache = New()
 	}
 	mutate(s.cache)
+	s.scheduleSaveLocked()
+	s.mu.Unlock()
+}
+
+func (s *Store) scheduleSaveLocked() {
 	s.dirty = true
 	if !s.flushing {
 		s.flushing = true
 		s.flushTimer = time.AfterFunc(saveDelay, s.flush)
 	}
-	s.mu.Unlock()
 }
 
 // MutateAndSave 用于必须确认写盘结果的用户设置。失败时恢复修改前的内存状态，

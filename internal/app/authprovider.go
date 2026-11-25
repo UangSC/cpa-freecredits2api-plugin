@@ -7,6 +7,7 @@ package app
 // 登录协议与续期链路由各供应商实现；根层只做路由、错误分类与状态码映射。
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -701,20 +702,13 @@ func (a *App) firstVendorForRegion(region string) (core.Vendor, bool) {
 	return nil, false
 }
 
-// ---- 凭证写回（原 credentials.go） ----
+// ---- 续期凭证写回 ----
 
 // saveRefreshedCredential 把续期后的凭证写回宿主与磁盘。
 //
-// 写两处是刻意的双保险：
-//   - host.auth.save 让宿主热更新内存注册表；
-//   - 直接写文件兜住 host.auth.save 不可用的场景。
-//
-// 两处必须写**同一份**内容：uid 大小写归一由 hostbridge.SaveAuth /
-// hostbridge.AlignCredentialUID 统一完成（见那里的说明），这里只负责
-// 选对归一的基准名，并把返回的 JSON 原样落盘。
+// host.auth.save 优先更新凭证注册表和文件。文件仍处于续期前的状态时，才使用磁盘兜底。
 func (a *App) saveRefreshedCredential(ctx context.Context, callbackID string, vendor core.Vendor,
 	entry core.HostAuth, original []byte, updated *core.Credential, filePath string) {
-	payload, okPayload := refreshedStorageJSON(vendor, original, updated)
 	targetPath := filePath
 	if targetPath == "" {
 		targetPath = entry.Path
@@ -722,7 +716,19 @@ func (a *App) saveRefreshedCredential(ctx context.Context, callbackID string, ve
 	if targetPath == "" {
 		return
 	}
+	current, errRead := os.ReadFile(targetPath)
+	var flags struct {
+		Disabled bool `json:"disabled"`
+	}
+	if errRead != nil || json.Unmarshal(current, &flags) != nil || flags.Disabled {
+		return
+	}
 	name := authWriteName(entry, targetPath)
+	if ctx.Err() != nil || !refreshMatchesDisk(vendor, name, original, current) {
+		return
+	}
+	// 以当前文件为基底，保留续期过程中保存的别名、代理和其它设置。
+	payload, okPayload := refreshedStorageJSON(vendor, current, updated)
 	if okPayload {
 		// SaveAuth 内部做 uid 归一，返回实际写给宿主的 JSON。
 		saved, errSave := hostbridge.SaveAuth(hostbridge.CallbackID(hostbridge.WithCallbackID(ctx, callbackID)), name, payload)
@@ -733,6 +739,11 @@ func (a *App) saveRefreshedCredential(ctx context.Context, callbackID string, ve
 	} else {
 		// 合并失败也要归一：未归一的凭证同样会被宿主按 uid 再登记一条。
 		payload = hostbridge.AlignCredentialUID(payload, name)
+	}
+	// 宿主已写入或有其它写入完成时保留磁盘状态，避免续期兜底覆盖刚停用的凭证。
+	latest, errRead := os.ReadFile(targetPath)
+	if errRead != nil || !bytes.Equal(latest, current) || bytes.Equal(latest, payload) {
+		return
 	}
 	// 临时文件 + rename：凭证文件被宿主 fsnotify 监听，半写状态会让宿主读到一个
 	// 截断的 JSON。rename 在同一文件系统内是原子的，宿主只会看到旧版或新版。
@@ -745,6 +756,20 @@ func (a *App) saveRefreshedCredential(ctx context.Context, callbackID string, ve
 		_ = os.Remove(tmp)
 		logger.Debug("keepalive %s: replace credential file failed: %v", entry.Name, errRename)
 	}
+}
+
+// refreshMatchesDisk 核对发起续期时的凭证版本仍与当前文件一致。
+func refreshMatchesDisk(vendor core.Vendor, name string, original, current []byte) bool {
+	if bytes.Equal(original, current) {
+		return true
+	}
+	previous, err := vendor.Parse(original, name)
+	if err != nil {
+		return false
+	}
+	latest, err := vendor.Parse(current, name)
+	return err == nil && sameCredentialStateIdentity(previous, latest) &&
+		previous.TokenValue() == latest.TokenValue() && previous.RefreshTokenValue() == latest.RefreshTokenValue()
 }
 
 // authWriteName 返回 uid 归一时的基准文件名。

@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
-	"cpa-freecredits2api-plugin/internal/core"
 	"net/http"
 	"strings"
 	"time"
+
+	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/core"
 )
 
 // 官方模型信息于 2026-11-16 核对；作为插件内置默认值，避免元数据缺失时猜测容量。
