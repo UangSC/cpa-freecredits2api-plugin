@@ -451,6 +451,9 @@ func (s *Service) purgeAccountState(raw []byte, fileName string) {
 		return
 	}
 	fileID := credential.FileIDValue()
+	if catalog := s.deps.Model(); catalog != nil {
+		catalog.RememberCredentialModels(fileID, "", nil, false)
+	}
 	// 与 tasks.checkinHistoryKey 同口径（vendor.ID() + FileID）：ParseCredential
 	// 已按解析结果补齐 vendor 字段，这里不会再出现空供应商前缀。
 	historyKey := state.CheckinHistoryKey(credential.VendorIDValue(), fileID)
@@ -471,7 +474,7 @@ func (s *Service) setAuthDisabled(ctx context.Context, callbackID string, entry 
 }
 
 // SaveAuthDisabled 经宿主写回 disabled 标记，同时更新磁盘与内存注册表。
-// 手动与自动停用共用凭证归属和路径校验。
+// 管理操作先核对凭证归属、路径与令牌版本。
 func (s *Service) SaveAuthDisabled(callbackID string, entry core.HostAuth, raw []byte, filePath string, disabled bool) error {
 	file, errSafe := readAuthFile(s.registry, entry, raw, filePath)
 	if errSafe != nil {

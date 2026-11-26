@@ -1185,6 +1185,9 @@ button.pill.pill-interactive:active { transform: scale(.97); }
 #models .col-efforts { min-width: 124px; }
 #models td.col-model.is-aliased .editablename { color: var(--accent-text); font-weight: 600; }
 .model-status-wrap { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.model-priority { display: inline-flex; align-items: center; gap: 5px; }
+.model-priority input { width: 54px; margin: 0; }
+.model-priority .tnum { min-width: 1ch; text-align: center; }
 .vendor-quick-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
   margin-top: 10px; padding: 8px 12px;

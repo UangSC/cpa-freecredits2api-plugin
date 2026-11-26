@@ -4,9 +4,9 @@
     {
       "id": "freecredits2api",
       "name": "FreeCredits2API",
-      "description": "将多个 AI 供应商接入 CLIProxyAPI，支持模型发现与推理、按凭证和模型退避、账号与额度管理、每日签到及可扩展的活动任务。",
+      "description": "将多个 AI 供应商接入 CLIProxyAPI，支持同名模型池、模型优先级与独立冷却、账号与额度管理、每日签到及可扩展的活动任务。",
       "author": "jiandanc/Likhixang/UangSC",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "repository": "https://github.com/UangSC/cpa-freecredits2api-plugin",
       "logo": "https://raw.githubusercontent.com/UangSC/cpa-freecredits2api-plugin/main/docs/images/logo.svg",
       "homepage": "https://github.com/UangSC/cpa-freecredits2api-plugin",

@@ -52,6 +52,7 @@ type preparedExecution struct {
 	rpc           executorRPCRequest
 	vendor        core.Vendor
 	credential    *core.Credential
+	models        []string
 	model         string
 	contextLength int64
 }
@@ -82,17 +83,16 @@ func (a *App) handleExecutorExecute(request []byte) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(
 		hostbridge.WithCallbackID(context.Background(), prepared.rpc.HostCallbackID), executorRPCTimeout)
 	defer cancel()
-	attempt, errCooldown := a.beginModelAttempt(prepared)
-	if errCooldown != nil {
-		return nil, errCooldown
-	}
-
-	response, errExecute := prepared.vendor.Execute(ctx, prepared.credential, prepared.executeRequest())
-	if errExecute != nil {
-		return nil, core.ToPluginError(a.recordModelFailure(ctx, prepared, attempt, errExecute))
-	}
-	if attempt.observeSuccess && response != nil && ctx.Err() == nil && completedInference(response.Payload, false) {
-		a.recordModelSuccess(attempt)
+	var response *pluginapi.ExecutorResponse
+	if err := a.executeModelRoute(ctx, prepared, func(selected preparedExecution, attempt modelAttempt) (bool, error) {
+		result, errExecute := selected.vendor.Execute(ctx, selected.credential, selected.executeRequest())
+		response = result
+		if errExecute == nil && attempt.observeSuccess && result != nil && ctx.Err() == nil && completedInference(result.Payload, false) {
+			a.recordModelSuccess(attempt)
+		}
+		return false, errExecute
+	}); err != nil {
+		return nil, core.ToPluginError(err)
 	}
 	a.syncCredentialStateAfterExecution(ctx, prepared)
 	return core.OKEnvelope(response)
@@ -111,11 +111,6 @@ func (a *App) handleExecutorExecuteStream(request []byte) ([]byte, error) {
 	if strings.TrimSpace(prepared.rpc.StreamID) == "" {
 		return nil, core.NewPluginError("invalid_request", "stream_id is required for streaming execution", http.StatusBadRequest)
 	}
-	attempt, errCooldown := a.beginModelAttempt(prepared)
-	if errCooldown != nil {
-		return nil, errCooldown
-	}
-
 	// 头部必须同步返回：宿主用它们构造下游响应。
 	streamHeaders := http.Header{
 		"Content-Type":  []string{"text/event-stream"},
@@ -131,7 +126,7 @@ func (a *App) handleExecutorExecuteStream(request []byte) ([]byte, error) {
 		// 兜底：runStreamExecution 已把供应商代码的 panic 转成错误帧，这里再挡住
 		// 收尾阶段（closeStream）的意外，避免拖垮宿主进程。
 		defer safe.Recover("stream " + prepared.rpc.StreamID)
-		a.runStreamExecution(streamCtx, cancelStream, prepared, attempt)
+		a.runStreamExecution(streamCtx, cancelStream, prepared)
 	}()
 
 	return core.OKEnvelope(rpcExecutorStreamResponse{Headers: streamHeaders})
@@ -158,31 +153,34 @@ func rewritePayloadModel(payload []byte, model string) []byte {
 }
 
 // runStreamExecution 在后台把上游 SSE 转发给宿主流。
-func (a *App) runStreamExecution(streamCtx context.Context, cancelStream context.CancelFunc, prepared preparedExecution, attempt modelAttempt) {
+func (a *App) runStreamExecution(streamCtx context.Context, cancelStream context.CancelFunc, prepared preparedExecution) {
 	ctx := hostbridge.WithCallbackID(streamCtx, prepared.rpc.HostCallbackID)
 	streamID := prepared.rpc.StreamID
 	callbackID := prepared.rpc.HostCallbackID
 
-	sink := &hostStreamSink{
-		callbackID:     callbackID,
-		streamID:       streamID,
-		cancelStream:   cancelStream,
-		observeSuccess: attempt.observeSuccess,
-	}
-	errForward := executeStreamSafe(ctx, prepared, sink)
+	errForward := a.executeModelRoute(ctx, prepared, func(selected preparedExecution, attempt modelAttempt) (bool, error) {
+		sink := &hostStreamSink{
+			callbackID:     callbackID,
+			streamID:       streamID,
+			cancelStream:   cancelStream,
+			observeSuccess: attempt.observeSuccess,
+		}
+		err := executeStreamSafe(ctx, selected, sink)
+		if err == nil && streamCtx.Err() == nil && sink.completed {
+			a.recordModelSuccess(attempt)
+		}
+		return sink.emitted, err
+	})
 	if errors.Is(context.Cause(streamCtx), errPluginStopping) {
 		closeStream(callbackID, streamID, pluginStoppingError())
 		return
 	}
 	// 下游主动断开会取消上下文，那不是错误，不该发错误帧给客户端。
 	if errForward != nil && streamCtx.Err() == nil {
-		closeStream(callbackID, streamID, a.recordModelFailure(ctx, prepared, attempt, errForward))
+		closeStream(callbackID, streamID, errForward)
 		return
 	}
 	if errForward == nil && streamCtx.Err() == nil {
-		if sink.completed {
-			a.recordModelSuccess(attempt)
-		}
 		a.syncCredentialStateAfterExecution(ctx, prepared)
 	}
 	closeStream(callbackID, streamID, nil)
@@ -208,6 +206,7 @@ type hostStreamSink struct {
 	callbackID     string
 	streamID       string
 	cancelStream   context.CancelFunc
+	emitted        bool
 	completed      bool
 	observeSuccess bool
 }
@@ -223,6 +222,7 @@ func (s *hostStreamSink) Emit(payload []byte) error {
 		s.cancelStream()
 		return errEmit
 	}
+	s.emitted = true
 	if s.observeSuccess && !s.completed && bytes.Contains(frame, []byte(`"finish_reason"`)) {
 		s.completed = completedInference(frame, true)
 	}
@@ -347,25 +347,12 @@ func (a *App) prepareExecution(request []byte) (preparedExecution, error) {
 		return prepared, core.NewPluginError("invalid_request", "model is required", http.StatusBadRequest)
 	}
 
-	// 客户端请求的是别名时还原成上游官方 ID：禁用校验与出站都用官方 ID，
-	// 因此还原必须发生在两者之前。
-	prepared.model = a.resolveOutboundModel(vendor.ID(), bareModel)
-	prepared.contextLength = a.models.ContextLengthFor(vendor.ID(), prepared.model)
-
-	// 检查模型是否已被插件配置禁用（禁用键是 vendor:model，跨供应商互不影响）。
-	// 用官方 ID 判定：管理页展示与写入的禁用键都是官方 ID，别名只是对外名字。
-	if a.isModelDisabled(vendor.ID(), prepared.model) {
-		return prepared, core.NewPluginError("model_disabled",
-			fmt.Sprintf("model %q is disabled by plugin configuration", prepared.rpc.Model),
-			http.StatusBadRequest)
-	}
-
 	// 供应商所在的区域被配置关闭时直接拒绝（而不是让请求打到错误的上游域名）。
 	if !core.RealmEnabled(a.Config().EnabledRealms, vendor.Region()) {
 		return prepared, core.NewPluginError("vendor_disabled",
 			fmt.Sprintf("vendor %s is disabled by plugin configuration", vendor.ID()), http.StatusBadRequest)
 	}
-	return prepared, nil
+	return a.prepareModelRoute(prepared, bareModel)
 }
 
 // handleExecutorCountTokens 估算 token 数。

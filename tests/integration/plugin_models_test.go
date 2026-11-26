@@ -329,9 +329,7 @@ func TestConfigAndStateDisabledModelsUnion(t *testing.T) {
 	}
 }
 
-// TestModelAliasScopedAndRouting 验证别名的两条语义：
-//   - 别名是**供应商内**生效的对外 ID（同供应商内唯一、换绑旧模型）；
-//   - 出站时按供应商还原成官方 ID（跨供应商同名别名各自路由回自己的模型）。
+// TestModelAliasScopedAndRouting 验证同一供应商可共享别名，反查仍按供应商隔离。
 func TestModelAliasScopedAndRouting(t *testing.T) {
 	installFakeHost(t)
 	setupTestPlugin(t)
@@ -369,16 +367,16 @@ func TestModelAliasScopedAndRouting(t *testing.T) {
 		t.Fatalf("passthrough = %q, want glm-5.3", got)
 	}
 
-	// 同供应商内别名唯一：把别名换绑到另一个模型，旧绑定被清掉。
+	// 在同一供应商内加入同名候选，既有绑定继续有效。
 	testApp.HandleModelAlias(pluginapi.ManagementRequest{
 		Method: "POST", Path: "/models/alias",
 		Body: []byte(`{"model":"workbuddycn:glm-5.3","alias":"glm-max"}`),
 	})
-	if got := testApp.ModelAliasFor("workbuddycn", "glm-5.2"); got != "" {
-		t.Fatalf("rebind must clear the old binding, got %q", got)
+	if got := testApp.ModelAliasFor("workbuddycn", "glm-5.2"); got != "glm-max" {
+		t.Fatalf("adding a candidate should preserve the old binding, got %q", got)
 	}
-	if got := testApp.ResolveOutboundModel("workbuddycn", "glm-max"); got != "glm-5.3" {
-		t.Fatalf("after rebind resolveOutboundModel = %q, want glm-5.3", got)
+	if got := testApp.ModelAliasFor("workbuddycn", "glm-5.3"); got != "glm-max" {
+		t.Fatalf("new candidate alias = %q, want glm-max", got)
 	}
 
 	// 清除别名（空串）恢复官方 ID。
@@ -388,6 +386,9 @@ func TestModelAliasScopedAndRouting(t *testing.T) {
 	})
 	if got := testApp.ModelAliasFor("workbuddycn", "glm-5.3"); got != "" {
 		t.Fatalf("clear alias failed, got %q", got)
+	}
+	if got := testApp.ResolveOutboundModel("workbuddycn", "glm-max"); got != "glm-5.2" {
+		t.Fatalf("remaining candidate = %q, want glm-5.2", got)
 	}
 }
 

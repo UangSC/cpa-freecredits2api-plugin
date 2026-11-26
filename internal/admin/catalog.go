@@ -1,8 +1,7 @@
 // 本文件是模型目录（catalog）：静态清单缓存、别名、禁用集合、同名合并与刷新。
 //
-// 放在 admin 包内是因为它只服务于管理页与模型注册这条链：目录的写入全部
-// 来自管理接口或注册回包，读写都要经过宿主 RPC 与 state.json，没有第二个
-// 调用方。为此单开一个包只会让 admin 与它互相 import。
+// 管理页、模型注册和推理共用同一份模型配置。模型注册还会保留每条凭证的
+// 上游清单，供推理选择候选模型。
 package admin
 
 import (
@@ -42,11 +41,13 @@ type Catalog struct {
 	store    *state.Store
 	registry *core.Registry
 
-	mu       sync.RWMutex
-	settings ModelSettings
-	disabled map[string]bool
-	aliases  map[string]string
-	contexts map[string]int64
+	mu               sync.RWMutex
+	settings         ModelSettings
+	disabled         map[string]bool
+	aliases          map[string]string
+	contexts         map[string]int64
+	priorities       map[string]int
+	credentialModels map[string]credentialModelSet
 	// cached 是各供应商最近一次拿到的**官方 ID** 清单（控制台回读用）。
 	cached map[string]cachedVendor
 
@@ -73,14 +74,16 @@ type cachedVendor struct {
 // New 创建 Catalog。
 func NewCatalog(store *state.Store, registry *core.Registry) *Catalog {
 	return &Catalog{
-		store:    store,
-		registry: registry,
-		disabled: map[string]bool{},
-		aliases:  map[string]string{},
-		contexts: map[string]int64{},
-		cached:   map[string]cachedVendor{},
-		probing:  map[string]chan struct{}{},
-		probeAt:  map[string]time.Time{},
+		store:            store,
+		registry:         registry,
+		disabled:         map[string]bool{},
+		aliases:          map[string]string{},
+		contexts:         map[string]int64{},
+		priorities:       map[string]int{},
+		credentialModels: map[string]credentialModelSet{},
+		cached:           map[string]cachedVendor{},
+		probing:          map[string]chan struct{}{},
+		probeAt:          map[string]time.Time{},
 	}
 }
 
@@ -107,6 +110,12 @@ func (c *Catalog) SetNameTag(mode string) {
 func (c *Catalog) ReloadFromState(snapshot state.State) {
 	c.mu.Lock()
 	c.reloadAliasesLocked(snapshot.ModelAliases)
+	c.priorities = make(map[string]int, len(snapshot.ModelPriorities))
+	for key, priority := range snapshot.ModelPriorities {
+		if priority > 0 && priority <= MaxModelPriority {
+			c.priorities[strings.ToLower(c.canonicalAliasKey(key))] = priority
+		}
+	}
 	c.contexts = make(map[string]int64, len(snapshot.ModelContexts))
 	for key, value := range snapshot.ModelContexts {
 		if value > 0 && value <= MaxModelContextLength {
@@ -230,10 +239,11 @@ func (c *Catalog) IsDisabled(vendorID, modelID string) bool {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if !c.disabled[bare] && !c.disabled[c.registry.ModelKeyFor(vendorID, bare)] {
-		return false
-	}
-	return c.registeredLocked(vendorID, bare)
+	return c.modelDisabledLocked(vendorID, bare) && c.registeredLocked(vendorID, bare)
+}
+
+func (c *Catalog) modelDisabledLocked(vendorID, modelID string) bool {
+	return c.disabled[modelID] || c.disabled[c.registry.ModelKeyFor(vendorID, modelID)]
 }
 
 // registeredLocked 报告某供应商的当前清单里是否还有这个官方 ID。
@@ -269,9 +279,12 @@ func (c *Catalog) prefixCoversVendor(prefix, vendorID string) bool {
 
 // FilterForVendor 剔除某供应商下被禁用的模型。
 func (c *Catalog) FilterForVendor(vendorID string, models []pluginapi.ModelInfo) []pluginapi.ModelInfo {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	out := make([]pluginapi.ModelInfo, 0, len(models))
 	for _, model := range models {
-		if c.IsDisabled(vendorID, model.ID) {
+		// 调用方已提供待注册清单，直接用它判断禁用，避免另一凭证的探测覆盖供应商缓存。
+		if c.modelDisabledLocked(vendorID, strings.TrimSpace(model.ID)) {
 			continue
 		}
 		out = append(out, model)
@@ -762,7 +775,6 @@ func (c *Catalog) ApplyAliases(vendorID string, models []pluginapi.ModelInfo) []
 	if len(models) == 0 || (!fixed && c.settings.ModelNameTag == ModelNameTagOff && len(c.aliases) == 0 && len(c.contexts) == 0) {
 		return models
 	}
-	prefix := strings.ToLower(strings.TrimSpace(vendorID)) + ":"
 	// 撞车判定用**本次入参清单**构造的 ID 集合：registeredLocked 对缓存为空
 	// 的供应商会把任何名字判成「已存在」，导致标识被整体放弃——同一份清单
 	// 里有的带标识、有的不带，恰好复活本特性要消除的歧义。
@@ -780,23 +792,25 @@ func (c *Catalog) ApplyAliases(vendorID string, models []pluginapi.ModelInfo) []
 			model.ContextLength = limit
 			model.InputTokenLimit = limit
 		}
-		manual := c.aliases[prefix+bare]
-		tagged := c.taggedModelID(vendorID, bare)
-		switch {
-		case manual != "":
-			model.ID = manual
-			model.Name = manual
-			model.DisplayName = manual
-		case tagged != "" && !present[strings.ToLower(tagged)]:
-			// 自动渠道标识不覆盖：手动别名优先；tag 后的名字撞上**同供应商
-			// 清单里的其他模型**时放弃标识（防路由歧义；跨供应商本就不合并）。
-			model.ID = tagged
-			model.Name = tagged
-			model.DisplayName = tagged
+		if publicID := c.publicModelIDLocked(vendorID, bare, present); publicID != bare || c.aliases[aliasScopedKey(vendorID, bare)] != "" {
+			model.ID = publicID
+			model.Name = publicID
+			model.DisplayName = publicID
 		}
 		out = append(out, model)
 	}
 	return out
+}
+
+func (c *Catalog) publicModelIDLocked(vendorID, modelID string, present map[string]bool) string {
+	if alias := c.aliases[aliasScopedKey(vendorID, modelID)]; alias != "" {
+		return alias
+	}
+	// 自动标识不能占用同一清单中其他模型的官方 ID。
+	if tagged := c.taggedModelID(vendorID, modelID); tagged != "" && !present[strings.ToLower(tagged)] {
+		return tagged
+	}
+	return modelID
 }
 
 // taggedModelID 按当前模式给模型 ID 加渠道标识；off 或结果为空返回空串。
@@ -829,15 +843,23 @@ func (c *Catalog) ResolveOutboundModel(vendorID, model string) string {
 	prefix := strings.ToLower(strings.TrimSpace(vendorID)) + ":"
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	var best string
+	var priority int
 	for key, alias := range c.aliases {
 		if !strings.EqualFold(alias, requested) || !strings.HasPrefix(key, prefix) {
 			continue
 		}
 		bare := strings.TrimPrefix(key, prefix)
-		if c.registeredLocked(vendorID, bare) {
-			return bare
+		if !c.registeredLocked(vendorID, bare) {
+			logger.Debug("models: ignoring alias %q -> %q (%s no longer registers it)", alias, bare, vendorID)
+			continue
 		}
-		logger.Debug("models: ignoring alias %q -> %q (%s no longer registers it)", alias, bare, vendorID)
+		if p := c.priorities[strings.ToLower(key)]; best == "" || p > priority || (p == priority && bare < best) {
+			best, priority = bare, p
+		}
+	}
+	if best != "" {
+		return best
 	}
 	// 自动渠道标识的还原：prefix / suffix **两种形态都试**（不依赖当前模式）。
 	// 模式切换后（如 prefix→off/suffix）宿主注册表仍是旧名字，客户端手里的
@@ -867,7 +889,7 @@ func (c *Catalog) untagModelID(vendorID, requested string) []string {
 
 // SetAlias 设置或清除某模型的别名。
 //
-// 同一供应商内别名唯一：写入时清掉占用同名别名的旧模型，否则反查会命中两条。
+// 同一供应商的多个上游模型可共享别名，推理时按当前凭证的清单选择。
 // 落盘时顺带把旧前缀键改写成现役键，旧配置自然迁移，不会留下清不掉的残留。
 func (c *Catalog) SetAlias(vendorID, bare, alias string) error {
 	if c.store == nil {
@@ -887,12 +909,6 @@ func (c *Catalog) SetAlias(vendorID, bare, alias string) error {
 		if alias == "" {
 			delete(next, scoped)
 		} else {
-			prefix := strings.ToLower(strings.TrimSpace(vendorID)) + ":"
-			for existing, existingAlias := range next {
-				if existing != scoped && strings.EqualFold(existingAlias, alias) && strings.HasPrefix(existing, prefix) {
-					delete(next, existing)
-				}
-			}
 			next[scoped] = alias
 		}
 		s.ModelAliases = next

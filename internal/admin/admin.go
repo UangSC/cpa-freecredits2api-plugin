@@ -105,7 +105,7 @@ func (s *Service) managementRoutes(prefix string) []pluginapi.ManagementRoute {
 		{Method: "POST", Path: prefix + "/quotas", Description: "批量查询账号额度。"},
 		{Method: "POST", Path: prefix + "/accounts/delete", Description: "删除指定账号的凭证文件（宿主监听 auth 目录，会自动注销该账号）。"},
 		{Method: "POST", Path: prefix + "/accounts/enabled", Description: "批量启用/停用账号（写凭证上的 disabled 标记，不删除文件、不动 token）。"},
-		{Method: "GET", Path: prefix + "/accounts/model-cooldowns", Description: "按凭证读取正在退避或已暂停的模型。"},
+		{Method: "GET", Path: prefix + "/accounts/model-cooldowns", Description: "读取上游模型冷却和整条凭证的等待状态。"},
 		{Method: "POST", Path: prefix + "/accounts/models/resume", Description: "恢复一条凭证下已暂停的模型。"},
 		{Method: "POST", Path: prefix + "/accounts/add", Description: "添加 API Key 类账号。"},
 		{Method: "POST", Path: prefix + "/accounts/alias", Description: "给账号设置/清除自定义展示别名（别名优先于上游昵称显示）。"},
@@ -113,7 +113,8 @@ func (s *Service) managementRoutes(prefix string) []pluginapi.ManagementRoute {
 		{Method: "POST", Path: prefix + "/accounts/quota-auth/start", Description: "为当前账号创建可选的墨点网页授权地址。"},
 		{Method: "GET", Path: prefix + "/models", Description: "读取当前注册的模型清单。"},
 		{Method: "POST", Path: prefix + "/models/toggle", Description: "批量禁用/启用模型。"},
-		{Method: "POST", Path: prefix + "/models/alias", Description: "给模型设置/清除对外别名（跨供应商同名可合并路由）。"},
+		{Method: "POST", Path: prefix + "/models/alias", Description: "设置或清除对外模型 ID，多条上游模型可共用同一 ID。"},
+		{Method: "POST", Path: prefix + "/models/priority", Description: "设置同一凭证内的模型优先级（0–9）。"},
 		{Method: "POST", Path: prefix + "/models/context", Description: "设置模型上下文 token 数，0 表示恢复自动值。"},
 		{Method: "POST", Path: prefix + "/models/refresh", Description: "从上游拉取模型清单并缓存。"},
 		{Method: "GET", Path: prefix + "/logs", Description: "读取插件日志（增量）。"},
@@ -208,6 +209,9 @@ func (s *Service) Handle(request []byte) ([]byte, error) {
 
 	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/models/alias"):
 		return core.OKEnvelope(s.modelAliasHandler(rpc))
+
+	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/models/priority"):
+		return core.OKEnvelope(s.modelPriorityHandler(rpc))
 
 	case method == http.MethodPost && matchesManagementPath(rpc.Path, id.ID, "/models/context"):
 		return core.OKEnvelope(s.modelContextHandler(rpc))

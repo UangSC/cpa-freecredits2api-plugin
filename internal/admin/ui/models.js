@@ -5,12 +5,14 @@
   var modelQuickFilter = "all"; // "all" | "enabled" | "disabled" | "aliased" | "images" | "tools"
   var modelPagerState = { page: 1, pageSize: 25 };
   var selectedModels = {};
-  var expandedAggGroups = {};
+  var expandedAggGroups = Object.create(null);
+  var pendingModelPriorities = Object.create(null);
 
   var MODEL_COLUMNS = [
     { key: "check", header: "", cell: modelCheckCell },
     { key: "status", header: "启停", cell: modelStatusCell },
     { key: "vendor", header: "供应商", cell: modelVendorCell },
+    { key: "priority", header: "优先级", cell: modelPriorityCell },
     { key: "model", header: "模型 ID", cell: modelIDCell },
     { key: "name", header: "名称", cell: function (m) {
       var td = el("td");
@@ -132,7 +134,7 @@
     if (bar) bar.classList.toggle("has-selection", count > 0);
     setText("modelBatchInfo", count > 0
       ? ("已选中 " + count + " 个模型")
-      : "行内开关可即时启停 · 点击「模型 ID」改别名（同名自动负载均衡）");
+      : "点击「模型 ID」设置共用别名 · 同一凭证内优先级高的模型先尝试，同等级随机");
     var headChk = document.getElementById("chkModelsPage");
     if (headChk) {
       var boxes = document.querySelectorAll("#models input[type=checkbox][data-model-id]");
@@ -294,12 +296,13 @@
   }
 
   function renderAggregatedModels(host, list) {
-    var groupsMap = {};
+    var groupsMap = Object.create(null);
     list.forEach(function (m) {
       var eff = effectiveModelID(m);
-      if (!groupsMap[eff]) groupsMap[eff] = { id: eff, items: [], enabled: 0 };
-      groupsMap[eff].items.push(m);
-      if (!m.disabled) groupsMap[eff].enabled++;
+      var key = eff.toLowerCase();
+      if (!groupsMap[key]) groupsMap[key] = { id: eff, items: [], enabled: 0 };
+      groupsMap[key].items.push(m);
+      if (!m.disabled) groupsMap[key].enabled++;
     });
     var groups = Object.keys(groupsMap).map(function (k) { return groupsMap[k]; });
     groups.sort(function (a, b) {
@@ -326,7 +329,7 @@
       summary.appendChild(svgEl("M7 5l5 5-5 5", "agg-chev"));
       summary.appendChild(el("span", g.id, "agg-id"));
 
-      if (g.enabled >= 2) summary.appendChild(pill("负载均衡 ×" + g.enabled, "accent"));
+      if (g.enabled >= 2) summary.appendChild(pill(g.enabled + " 个候选", "accent"));
       else if (g.enabled === 0) summary.appendChild(pill("已全停", "err"));
       else summary.appendChild(pill("单渠道", "ok"));
 
@@ -499,6 +502,54 @@
     return td;
   }
 
+  function modelPriorityCell(model) {
+    if (!model.vendor_id) return el("td", "—", "muted");
+    var key = modelKey(model);
+    var saved = Number(model.priority) || 0;
+    var td = el("td");
+    var wrap = el("span", null, "model-priority");
+    var slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "9";
+    slider.step = "1";
+    slider.title = "同凭证内数字越大越先尝试，同等级随机";
+    slider.setAttribute("aria-label", model.id + " 的模型优先级");
+    slider.disabled = Object.hasOwn(pendingModelPriorities, key);
+    slider.value = String(slider.disabled ? pendingModelPriorities[key] : saved);
+    var value = el("span", slider.value, "tnum");
+    slider.addEventListener("input", function () { value.textContent = slider.value; });
+    slider.addEventListener("change", function () {
+      var next = Number(slider.value);
+      if (next === saved || Object.hasOwn(pendingModelPriorities, key)) return;
+      pendingModelPriorities[key] = next;
+      slider.disabled = true;
+      api("POST", "/models/priority", { model: key, priority: next }).then(function (data) {
+        if (!data) return;
+        saved = data.priority;
+        model.priority = saved;
+        allModels.forEach(function (item) {
+          if (modelKey(item) === key) item.priority = saved;
+        });
+      }).catch(function (err) {
+        banner("err", "优先级保存失败：" + err.message);
+      }).finally(function () {
+        delete pendingModelPriorities[key];
+        if (!slider.isConnected) {
+          renderModels();
+          return;
+        }
+        slider.value = String(saved);
+        value.textContent = slider.value;
+        slider.disabled = false;
+      });
+    });
+    wrap.appendChild(slider);
+    wrap.appendChild(value);
+    td.appendChild(wrap);
+    return td;
+  }
+
   function modelVendorCell(model) {
     var vendor = vendorLabel(model.vendor_id, model.realm);
     var p = pill(vendor, vendorChipClass(model.vendor_id, vendor));
@@ -565,7 +616,8 @@
               return { value: savedAlias };
             }
             return verifyModelAlias(model, savedAlias, 0).then(function (effectiveID) {
-              if (effectiveID) notify("ok", "别名已保存并生效：" + bareID + " → " + effectiveID, 8000);
+              if (effectiveID && data.cooldown_sync_pending) notify("warn", "别名已保存，CPA 的路由冷却将在原等待结束后恢复。", 0);
+              else if (effectiveID) notify("ok", "别名已保存并生效：" + bareID + " → " + effectiveID, 8000);
               else notify("warn", "别名已保存；" + (model.disabled ? "模型当前已禁用" : "该供应商暂无已启用账号") + "，启用后才能核对生效。", 0);
               return { value: savedAlias };
             }).catch(function (err) {
@@ -597,10 +649,14 @@
       return Promise.all(accounts.map(function (account) {
         return api("GET", hostPath("/auth-files/models?name=" + encodeURIComponent(account.auth_id || account.file_id)));
       })).then(function (results) {
-        var registered = !status.restart_pending && results.some(function (result) {
-          return result && (result.models || []).some(function (item) { return item.id === expected; });
-        });
-        if (registered) return expected;
+        if (!status.restart_pending) {
+          for (var i = 0; i < results.length; i++) {
+            var registered = ((results[i] && results[i].models) || []).find(function (item) {
+              return String(item.id).toLowerCase() === expected.toLowerCase();
+            });
+            if (registered) return registered.id;
+          }
+        }
         if (attempt >= 5) throw new Error("CPA 尚未注册模型「" + expected + "」，请检查账号状态或稍后重试。");
         return new Promise(function (resolve) { setTimeout(resolve, 500); }).then(function () {
           return verifyModelAlias(model, alias, attempt + 1);
@@ -674,7 +730,11 @@
     var verb = disabled ? "停用" : "启用";
     return api("POST", "/models/toggle", { models: ids, disabled: disabled }).then(function (data) {
       if (!data) return;
-      banner("ok", "已" + verb + " " + (data.changed || ids.length) + " 个模型，正在同步到宿主…");
+      if (data.cooldown_sync_pending) {
+        banner("warn", "模型已启用，CPA 的凭证冷却将在原等待结束后恢复。", 0);
+      } else {
+        banner("ok", "已" + verb + " " + (data.changed || ids.length) + " 个模型，正在同步到宿主…");
+      }
       syncModelConfig();
       loadModels(false);
     }).catch(function (err) { banner("err", err.message); throw err; });

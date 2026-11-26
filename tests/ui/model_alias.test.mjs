@@ -6,6 +6,7 @@ import { loadConsoleHTML } from './_console.mjs';
 const html = loadConsoleHTML();
 const aliasFunctions = html.slice(html.indexOf('  var modelAliasSaveVersions'), html.indexOf('  // selectedModelIDs'));
 const syncFunctions = html.slice(html.indexOf('  var MODEL_SYNC_DEBOUNCE_MS'), html.indexOf('  // formatTokens'));
+const priorityFunction = html.slice(html.indexOf('  function modelPriorityCell('), html.indexOf('  function modelVendorCell('));
 const officialID = 'sn-deepseek-v4-1-flash-1017';
 const alias = 'DeepSeek-v4.1-flash';
 
@@ -45,6 +46,43 @@ function setup(options = {}) {
   vm.runInContext(aliasFunctions, scope);
   return { scope, model, requests, banners };
 }
+
+test('优先级滑块默认 0，按官方模型保存，写盘失败时恢复已保存值', async () => {
+  const requests = [];
+  const banners = [];
+  const model = { id: officialID, scope_id: `raccoon:${officialID}`, vendor_id: 'raccoon', alias };
+  const element = (tag, text) => ({
+    tag, textContent: text, children: [], listeners: {}, isConnected: true,
+    appendChild(child) { this.children.push(child); },
+    setAttribute() {},
+    addEventListener(event, fn) { this.listeners[event] = fn; },
+  });
+  const scope = vm.createContext({
+    document: { createElement: element }, el: element, allModels: [model],
+    pendingModelPriorities: Object.create(null), modelKey: item => item.scope_id,
+    banner: (...args) => banners.push(args),
+    api: async (method, path, body) => {
+      requests.push([method, path, body.model, body.priority]);
+      if (body.priority === 6) throw new Error('写盘失败');
+      return { priority: body.priority };
+    },
+  });
+  vm.runInContext(priorityFunction, scope);
+  const [slider, value] = scope.modelPriorityCell(model).children[0].children;
+  assert.deepEqual([slider.type, slider.min, slider.max, slider.step, slider.value], ['range', '0', '9', '1', '0']);
+  slider.value = '9';
+  slider.listeners.input();
+  assert.equal(value.textContent, '9');
+  slider.listeners.change();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(requests[0], ['POST', '/models/priority', model.scope_id, 9]);
+  assert.equal(model.priority, 9);
+  slider.value = '6';
+  slider.listeners.change();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual([model.priority, slider.value, value.textContent, slider.disabled], [9, '9', '9', false]);
+  assert.match(banners.at(-1)[1], /写盘失败/);
+});
 
 test('别名原样保存，等待同步完成，并只核对目标供应商的注册表', async () => {
   const sync = deferred();

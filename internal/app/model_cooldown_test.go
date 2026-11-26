@@ -37,7 +37,7 @@ func TestConcurrentModelFailuresCountOnce(t *testing.T) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			reported := a.recordModelFailure(context.Background(), prepared, attempt, failure)
+			reported := a.recordModelFailure(context.Background(), attempt, failure)
 			if detail := streamErrorDetail(reported, streamFailureMessage(reported)); detail == nil ||
 				detail.CredentialScoped || detail.RetryAfterSeconds != 3*3600 {
 				t.Errorf("invalid stream error detail: %+v", detail)
@@ -54,7 +54,7 @@ func TestConcurrentModelFailuresCountOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.recordModelFailure(context.Background(), prepared, attempt, failure)
+	a.recordModelFailure(context.Background(), attempt, failure)
 	second := a.store.ModelCooldown(attempt.fileID, attempt.model)
 	if second.Delay <= first.Delay {
 		t.Fatalf("second cooldown %v must exceed first %v", second.Delay, first.Delay)

@@ -789,6 +789,11 @@ type HostAuthModels struct {
 	Models    []string `json:"models"`
 }
 
+// HostRoutingResetCooldownRequest identifies one credential whose routing cooldown should be cleared.
+type HostRoutingResetCooldownRequest struct {
+	AuthIndex string `json:"auth_index"`
+}
+
 // HostAuthSaveRequest asks the host to persist credential JSON to a physical auth file.
 type HostAuthSaveRequest struct {
 	// Name is the target auth file name. It must end with .json.

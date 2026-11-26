@@ -275,6 +275,8 @@ type PluginError struct {
 	HTTPStatus int
 	// RetryAfterSeconds 是给宿主的等待时间（0 表示未给出）。
 	RetryAfterSeconds int
+	// CredentialScoped 表示当前凭证的全部启用模型均已阻塞。
+	CredentialScoped bool
 }
 
 // Error 实现 error 接口。
@@ -310,6 +312,7 @@ func (e *PluginError) ABIError() *pluginabi.Error {
 		Retryable:         e.Retryable,
 		HTTPStatus:        e.HTTPStatus,
 		RetryAfterSeconds: e.RetryAfterSeconds,
+		CredentialScoped:  e.CredentialScoped,
 	}
 }
 

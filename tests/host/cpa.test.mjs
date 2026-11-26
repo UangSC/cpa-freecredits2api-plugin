@@ -31,14 +31,14 @@ async function close(server) {
   await new Promise((done) => server.close(done));
 }
 
-function chatChunk(delta, finishReason = null) {
+function chatChunk(upstreamModel, delta, finishReason = null) {
   return {
-    id: 'chatcmpl-local', object: 'chat.completion.chunk', model,
+    id: 'chatcmpl-local', object: 'chat.completion.chunk', model: upstreamModel,
     choices: [{ index: 0, delta, finish_reason: finishReason }],
   };
 }
 
-function fixtureUpstream(executions, rateLimited = false) {
+function fixtureUpstream(executions, { models = [model], rateLimits = new Map() } = {}) {
   return createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${upstreamKey}`) {
       res.writeHead(401).end();
@@ -46,7 +46,7 @@ function fixtureUpstream(executions, rateLimited = false) {
     }
     if (req.method === 'GET' && req.url === '/v1/models') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ object: 'list', data: [{ id: model, object: 'model' }] }));
+      res.end(JSON.stringify({ object: 'list', data: models.map((id) => ({ id, object: 'model' })) }));
       return;
     }
     if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
@@ -58,19 +58,20 @@ function fixtureUpstream(executions, rateLimited = false) {
       for await (const chunk of req) raw += chunk;
       const body = JSON.parse(raw);
       executions.push(body);
-      if (rateLimited) {
-        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '120' });
+      const wait = rateLimits.get(body.model);
+      if (wait) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(wait) });
         res.end(JSON.stringify({ code: 'frequency_limit', message: 'retry later' }));
         return;
       }
       if (body.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        res.write(`data: ${JSON.stringify(chatChunk({ role: 'assistant', content: 'local stream' }))}\n\n`);
-        res.end(`data: ${JSON.stringify(chatChunk({}, 'stop'))}\n\ndata: [DONE]\n\n`);
+        res.write(`data: ${JSON.stringify(chatChunk(body.model, { role: 'assistant', content: 'local stream' }))}\n\n`);
+        res.end(`data: ${JSON.stringify(chatChunk(body.model, {}, 'stop'))}\n\ndata: [DONE]\n\n`);
       } else {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          id: 'chatcmpl-local', object: 'chat.completion', model,
+          id: 'chatcmpl-local', object: 'chat.completion', model: body.model,
           choices: [{ index: 0, message: { role: 'assistant', content: 'local chat' }, finish_reason: 'stop' }],
           usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         }));
@@ -131,7 +132,7 @@ async function eventually(check, message) {
   assert.fail(latestError ? `${message}（${latestError.message}）` : message);
 }
 
-async function startHost(t, upstreamPort, registrySource) {
+async function startHost(t, upstreamPort, registrySource, { requestRetry } = {}) {
   const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../dist');
   await mkdir(distDir, { recursive: true });
   const workspace = await mkdtemp(join(distDir, 'cpa-test-'));
@@ -176,7 +177,7 @@ management:
   disable-control-panel: true
 access:
   api-keys: [${quote(clientKey)}]
-routing:
+routing:${requestRetry === undefined ? '' : `\n  retry:\n    request-retry: ${requestRetry}`}
   cooldown:
     save-cooldown-status: true
 oauth:
@@ -387,7 +388,7 @@ for (const stream of [false, true]) {
     timeout: 60_000,
   }, async (t) => {
     const executions = [];
-    const upstream = fixtureUpstream(executions, true);
+    const upstream = fixtureUpstream(executions, { rateLimits: new Map([[model, 120]]) });
     const upstreamPort = await listen(upstream);
     t.after(() => close(upstream));
 
@@ -431,3 +432,104 @@ for (const stream of [false, true]) {
     assert.equal(executions.length, 1, '冷却期间不应再次调用上游');
   });
 }
+
+test('CPA 同名模型按优先级回退，全部启用模型不可用时才冷却凭证', {
+  skip: !hostBinary || !pluginLibrary,
+  timeout: 55_000,
+}, async (t) => {
+  const backupModel = 'Atria-Dawn';
+  const independentModel = 'intern-s2';
+  const standbyModel = 'Sage-A1.5';
+  const alias = 'pool-fixture';
+  const executions = [];
+  const rateLimits = new Map([[model, 120]]);
+  const upstream = fixtureUpstream(executions, { models: [model, backupModel, independentModel, standbyModel], rateLimits });
+  const upstreamPort = await listen(upstream);
+  t.after(() => close(upstream));
+
+  const { request, authDir } = await startHost(t, upstreamPort, undefined, { requestRetry: 0 });
+  const manage = async (path, method = 'GET', body) => jsonResponse(await request(`${managementPrefix}${path}`, { method, body }));
+  const added = await manage('/accounts/add', 'POST', { vendor: 'tokenplan', api_key: upstreamKey });
+  assert.equal(added.ok, true);
+  const fileID = added.auth_id.replace(/\.json$/i, '');
+  const models = async () => (await jsonResponse(await request('/v1/models'))).data.map(({ id }) => id);
+  const independentID = await eventually(async () => (await models()).find((id) => id === independentModel || id.endsWith(`/${independentModel}`)), '独立模型未注册');
+  const standbyKey = `tokenplan:${standbyModel}`;
+  assert.equal((await manage('/models/toggle', 'POST', { models: [standbyKey], disabled: true })).disabled, true);
+  for (const [id, priority] of [[model, 9], [backupModel, 5]]) {
+    const key = `tokenplan:${id}`;
+    assert.equal((await manage('/models/alias', 'POST', { model: key, alias })).alias, alias);
+    assert.equal((await manage('/models/priority', 'POST', { model: key, priority })).priority, priority);
+  }
+  const reload = async () => jsonResponse(await request(`/v8/management/config/plugins/configs/${pluginID}`, {
+    method: 'PATCH', body: { config_reloaded_at: new Date().toISOString() },
+  }));
+  assert.equal((await reload()).status, 'ok');
+  const poolID = await eventually(async () => {
+    const ids = (await models()).filter((id) => id === alias || id.endsWith(`/${alias}`));
+    return ids.length === 1 && ids[0];
+  }, 'CPA 未将两条映射注册为一个模型 ID');
+
+  const send = (id, stream = false) => request('/v1/chat/completions', {
+    method: 'POST', body: { model: id, stream, messages: [{ role: 'user', content: 'local request' }] },
+  });
+  const first = await send(poolID, true);
+  const stream = await first.text();
+  assert.equal(first.status, 200, stream);
+  assert.match(stream, /local stream/);
+  assert.deepEqual(executions.map(({ model: id }) => id), [model, backupModel]);
+  const cooling = await manage('/accounts/model-cooldowns');
+  assert.ok(cooling.models.some((row) => row.file_id === fileID && row.model === model.toLowerCase() && row.active));
+  assert.deepEqual(cooling.credentials, []);
+  await jsonResponse(await send(independentID));
+
+  rateLimits.set(backupModel, 60);
+  await jsonResponse(await send(poolID), 429);
+  assert.equal(executions.filter(({ model: id }) => id === model).length, 1);
+  assert.deepEqual((await manage('/accounts/model-cooldowns')).credentials, []);
+  rateLimits.set(independentModel, 10);
+  const finalFailure = await send(independentID);
+  assert.equal(finalFailure.status, 429, await finalFailure.text());
+  assert.equal(finalFailure.headers.get('retry-after'), '10');
+  const [credential] = (await manage('/accounts/model-cooldowns')).credentials;
+  assert.equal(credential?.file_id, fileID);
+  assert.equal(credential.model_count, 3);
+  const nativeCooldown = await eventually(async () => {
+    for (const name of await readdir(authDir)) {
+      if (!name.endsWith('.cds')) continue;
+      const { records } = JSON.parse(await readFile(join(authDir, name), 'utf8'));
+      const record = records.find((item) => !item.model && item.quota?.reason === 'credential_quota');
+      if (record) return record;
+    }
+    return false;
+  }, 'CPA 未收到全模型阻塞后的凭证级冷却信号');
+  assert.ok(Math.abs(Date.parse(nativeCooldown.next_retry_after) - Date.parse(credential.retry_at)) < 1500);
+  const beforeRetry = executions.length;
+  await jsonResponse(await send(independentID), 429);
+  assert.equal(executions.length, beforeRetry);
+  rateLimits.delete(independentModel);
+  await delay(Math.max(0, Date.parse(nativeCooldown.next_retry_after) - Date.now()) + 150);
+  await jsonResponse(await send(independentID));
+  assert.deepEqual((await manage('/accounts/model-cooldowns')).credentials, []);
+  assert.equal((await manage('/status')).accounts.find((account) => account.file_id === fileID)?.disabled, false);
+
+  rateLimits.set(independentModel, 30);
+  await jsonResponse(await send(independentID), 429);
+  assert.equal((await manage('/accounts/model-cooldowns')).credentials.length, 1);
+  const enabled = await manage('/models/toggle', 'POST', { models: [standbyKey], disabled: false });
+  assert.equal(enabled.cooldown_sync_pending, false);
+  assert.equal((await reload()).status, 'ok');
+  const standbyID = await eventually(async () => (await models()).find((id) => id === standbyModel || id.endsWith(`/${standbyModel}`)), '新启用的模型未注册');
+  await jsonResponse(await send(standbyID));
+  const beforeBlocked = executions.length;
+  await jsonResponse(await send(poolID), 429);
+  assert.equal(executions.length, beforeBlocked, '解除凭证冷却后，池中仍冷却的模型应继续被拦截');
+
+  const joined = await manage('/models/alias', 'POST', { model: standbyKey, alias });
+  assert.equal(joined.alias, alias);
+  assert.equal(joined.cooldown_sync_pending, false);
+  assert.equal((await reload()).status, 'ok');
+  await eventually(async () => !(await models()).includes(standbyID), '加入同名模型池后，旧的单独模型 ID 仍在注册表中');
+  await jsonResponse(await send(poolID));
+  assert.equal(executions.at(-1).model, standbyModel);
+});

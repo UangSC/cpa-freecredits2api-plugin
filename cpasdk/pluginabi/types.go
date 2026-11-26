@@ -111,11 +111,16 @@ const (
 	MethodHostAuthSave           = "host.auth.save"
 	MethodHostAuthModels         = "host.auth.models"
 	MethodHostAffinityLookup     = "host.affinity.lookup"
+
+	// MethodHostRoutingResetCooldown clears native cooldown state for one credential.
+	MethodHostRoutingResetCooldown = "host.routing.reset_cooldown"
 )
 
 const (
 	// ErrorCodeTransientRateLimit cools the reported model without marking quota exhaustion.
 	ErrorCodeTransientRateLimit = "transient_rate_limit"
+	// ErrorCodeRequestScoped leaves credential and model routing state unchanged.
+	ErrorCodeRequestScoped = "request_scoped"
 	// ErrorCodeConnectionLifecycle skips credential cooldown for a canceled request or connection.
 	ErrorCodeConnectionLifecycle = "connection_lifecycle"
 	// ErrorCodeTransientTransport keeps pre-response transport failures retryable without cooling the credential.

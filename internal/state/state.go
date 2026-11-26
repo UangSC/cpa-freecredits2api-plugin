@@ -141,6 +141,8 @@ type State struct {
 
 	// ModelAliases 是模型别名表：<vendorID>:<官方模型 ID> → 对外别名。
 	ModelAliases map[string]string `json:"model_aliases,omitempty"`
+	// ModelPriorities 保存同一凭证内各上游模型的路由优先级，缺省为 0。
+	ModelPriorities map[string]int `json:"model_priorities,omitempty"`
 
 	// ModelContexts 按供应商和官方模型 ID 保存上下文覆盖值；缺省时沿用上游。
 	ModelContexts map[string]int64 `json:"model_contexts,omitempty"`
@@ -201,16 +203,17 @@ func (s *Store) Configure(dir string) {
 // New 返回一个补齐 map 的空状态。
 func New() *State {
 	return &State{
-		Version:        Version,
-		Checkin:        map[string]CheckinRecord{},
-		CheckinHistory: map[string][]CheckinHistoryEntry{},
-		DailyBonusSent: map[string]string{},
-		Tasks:          map[string]TaskRecord{},
-		Claim:          map[string]ClaimRecord{},
-		ModelAliases:   map[string]string{},
-		ModelContexts:  map[string]int64{},
-		AccountAliases: map[string]string{},
-		TaskSchedules:  map[string][]int{},
+		Version:         Version,
+		Checkin:         map[string]CheckinRecord{},
+		CheckinHistory:  map[string][]CheckinHistoryEntry{},
+		DailyBonusSent:  map[string]string{},
+		Tasks:           map[string]TaskRecord{},
+		Claim:           map[string]ClaimRecord{},
+		ModelAliases:    map[string]string{},
+		ModelPriorities: map[string]int{},
+		ModelContexts:   map[string]int64{},
+		AccountAliases:  map[string]string{},
+		TaskSchedules:   map[string][]int{},
 	}
 }
 
@@ -292,6 +295,9 @@ func normalize(state *State) {
 	if state.ModelAliases == nil {
 		state.ModelAliases = map[string]string{}
 	}
+	if state.ModelPriorities == nil {
+		state.ModelPriorities = map[string]int{}
+	}
 	if state.ModelContexts == nil {
 		state.ModelContexts = map[string]int64{}
 	}
@@ -356,6 +362,7 @@ func clone(state *State) State {
 	for key, value := range state.ModelAliases {
 		out.ModelAliases[key] = value
 	}
+	out.ModelPriorities = maps.Clone(state.ModelPriorities)
 	out.ModelContexts = make(map[string]int64, len(state.ModelContexts))
 	for key, value := range state.ModelContexts {
 		out.ModelContexts[key] = value

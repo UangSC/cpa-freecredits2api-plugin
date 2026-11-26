@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
+	"cpa-freecredits2api-plugin/internal/admin"
 	"cpa-freecredits2api-plugin/internal/core"
 	"cpa-freecredits2api-plugin/internal/hostbridge"
 	"cpa-freecredits2api-plugin/internal/logger"
@@ -64,19 +65,29 @@ func (a *App) handleModelForAuth(request []byte) ([]byte, error) {
 	if !a.models.RealmEnabled(vendor.Region()) {
 		return core.OKEnvelope(pluginapi.ModelResponse{Provider: providerKey})
 	}
+	fileID := credential.FileIDValue()
 	models, errModels := core.ModelsFor(vendor, ctx, credential)
 	probed := errModels == nil
+	confirmed := probed
 	if !probed {
 		// 探测失败 ≠ 该凭证没有模型。进程内模型缓存挂在 Catalog 上，随 App 实例
 		// 一起消失，宿主热重载后每个凭证都会现场探测一轮；上游一次抖动（429、
 		// 超时、瞬时 5xx）就足以让整家供应商从 /v1/models 上消失，只能手动重存
 		// 设置才恢复。这里回落到上一次成功的清单，把「这次没取到」与「凭证真的
 		// 不可用」分开——后者由供应商返回空清单或确定性拒绝表达，不走这条回落。
-		if cached := a.cachedModelsFor(vendor, errModels); len(cached) > 0 {
+		var cached []pluginapi.ModelInfo
+		if !core.VetoesModelFallback(vendor) && modelProbeFallbackAllowed(errModels) {
+			cached, confirmed = a.models.CredentialModels(fileID, vendor.ID())
+			if len(cached) == 0 {
+				cached = a.cachedModelsFor(vendor, errModels)
+			}
+		}
+		if len(cached) > 0 {
 			logger.Info("model.for_auth: probe failed for %s (%v); falling back to cached catalog (%d model(s))",
 				vendor.ID(), errModels, len(cached))
 			models = cached
 		} else {
+			a.models.RememberCredentialModels(fileID, vendor.ID(), nil, false)
 			logger.Debug("model.for_auth: probe models for %s failed and no fallback catalog: %v", vendor.ID(), errModels)
 			return core.OKEnvelope(pluginapi.ModelResponse{Provider: providerKey})
 		}
@@ -92,9 +103,10 @@ func (a *App) handleModelForAuth(request []byte) ([]byte, error) {
 		logger.Info("model.for_auth: %s returned no models for %s (host will drop this credential)",
 			vendor.ID(), rpc.AuthID)
 	}
+	a.models.RememberCredentialModels(fileID, vendor.ID(), models, confirmed)
 	return core.OKEnvelope(pluginapi.ModelResponse{
 		Provider: providerKey,
-		Models:   a.models.ApplyAliases(vendor.ID(), a.models.FilterForVendor(vendor.ID(), models)),
+		Models:   admin.MergeSameNameModels(a.models.ApplyAliases(vendor.ID(), a.models.FilterForVendor(vendor.ID(), models))),
 	})
 }
 

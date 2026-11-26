@@ -22,7 +22,7 @@ The project is an independently maintained rework of [cpa-freetier2api-plugin](h
 
 - **Unified APIs**: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages through CPA, with standard and streaming requests.
 - **Account management**: OAuth, SMS verification, API keys, and credential import, with account aliases, credential refresh, and batch operations.
-- **Model management**: Discovery, enablement, custom aliases, channel tags, and context settings, integrated with CPA routing and failover.
+- **Model management** includes discovery, enablement, aliases, shared-ID model pools, model priority, channel tags, and context settings integrated with CPA credential routing.
 - **Model backoff**: Track consecutive failures per credential and model. Pause or resume the affected model through the management API.
 - **Quotas and check-ins**: Account quotas, plans, credits, and check-in history, with operations available according to provider capabilities.
 - **Tasks and schedules**: Manual execution, automatic check-in, independent task schedules, background queues, and extensible activity modules.
@@ -158,7 +158,8 @@ Set `"stream": true` in the request body for streaming. For OpenAI-compatible cl
 ### Manage Accounts and Models
 
 - **Account aliases**: Click an account name or edit icon to set a display name. Clear it to restore the upstream name.
-- **Model aliases**: Edit a model's public ID in the Models table, or clear the alias to restore the default. Case and punctuation are preserved. CPA applies its routing configuration when multiple eligible accounts expose the same ID.
+- **Model aliases** can be edited in the Models table. Clear an alias to restore its default ID. Several upstream models can share a public ID. The saved spelling is preserved, and routing matches IDs case-insensitively.
+- **Model priority** uses the `0–9` slider for each upstream model on its channel. Within one credential, higher priorities run first and tied models are selected randomly. The default is `0`. Changes apply to subsequent requests as soon as they are saved. CPA selects among credentials that expose the public ID.
 - **Channel tags**: Use `model_name_tag` to add a provider prefix or suffix to models without a manual alias.
 - **Context settings**: Editable models accept integer token counts, `400K`, or `1M`. Clear a value to restore automatic settings. Fixed context values are read-only, and upstream capacity limits still apply.
 
@@ -196,15 +197,17 @@ The default check-in schedule includes `09:00` and `21:00`, plus `auto_checkin_a
 
 When `state_dir` is omitted, use `FREECREDITS2API_PLUGIN_HOME` to specify a directory. Legacy state directory environment variables remain supported as fallbacks. Without a directory override, the default is the `freecredits2api` subdirectory of `~/.cli-proxy-api` if that directory exists, or `~/.freecredits2api-plugin`. CPA stores account credentials; the plugin state directory holds settings, caches, and execution records.
 
-### Model cooldown and automatic disabling
+### Model pool failover and cooldown
 
-Inference cooldowns apply to one model on one credential by default. CPA can route through the other eligible combinations. CodeBuddy `6004` uses the upstream reset time. AutoClaw `810000` uses `Retry-After` or 24 hours by default. CPA handles `810001` as transient model congestion and session failures through its authentication flow.
+For example, assign two models available to the same credential the public ID `chat-default` and priorities `9` and `3`. After CPA selects the credential, the plugin skips disabled, cooling, or paused models. If the preferred model reports a quota or rate limit, the plugin records its cooldown and tries the next candidate. A stream can switch before it emits its first data chunk. A failure after output starts is reported on that stream. CPA can try another credential when all candidates for the public ID are unavailable.
 
-Confirmed quota, plan, and account failures are tracked by credential and upstream model ID. Without upstream hints, the first five attempts cool down for 30 minutes, 1 hour, 2 hours, 4 hours, and 8 hours. The initial cooldown uses a supplied hint with a 10-second quota minimum. Later backoff grows from the preceding wait and honors longer upstream hints. Concurrent failures in one cooldown window count once. Successful inference resets the model's failure count. The plugin persists the progress and proof of success.
+The plugin persists inference cooldowns by credential and actual upstream model ID. Retryable `429` responses and temporary congestion use the upstream retry hint or a 10-second default. CodeBuddy `6004` uses the reported model reset time. AutoClaw `810000` uses `Retry-After` or a 24-hour default. CPA handles expired sessions through its authentication flow.
 
-On the sixth failure, a model with no recorded success is paused for that credential. CPA saves the credential as disabled when it can confirm that there is just one enabled model route, it matches the failing model, and the credential also has no recorded success. Operators can re-enable that credential in the console. Previously successful models can recover after cooldown.
+Confirmed quota, plan, and account failures count toward the model's long backoff. Without upstream hints, the first five attempts cool down for 30 minutes, 1 hour, 2 hours, 4 hours, and 8 hours. With an initial hint, the minimum is 10 seconds. Later backoff grows from the preceding wait and honors longer upstream hints. Concurrent failures in one window count once, and successful inference after the window resets that model's failure count. A model with no recorded success pauses on its sixth failure and can be resumed manually.
 
-Under the CPA plugin management prefix `/v0/management/plugins/freecredits2api`, `GET /accounts/model-cooldowns` lists backoff and pauses. `POST /accounts/models/resume` accepts the listed `file_id` and `model` to resume that combination. CPA can route to it after any remaining pause cooldown expires, within about a minute.
+The plugin reports a credential-wide wait to CPA only when it has confirmed the credential's model list and every enabled model on its channel is cooling or paused. The wait ends at the earliest model recovery time. CPA rechecks within about a minute if a model is paused. When an operator restores an eligible model or adds one to a blocked alias, the plugin clears CPA's stale routing wait and preserves the other models' cooldowns. A response with `cooldown_sync_pending: true` means CPA still needs to wait for the previous deadline. Account management controls the credential file's enabled setting.
+
+Under `/v0/management/plugins/freecredits2api`, `GET /accounts/model-cooldowns` returns per-model backoff and pause records in `models` and fully blocked credentials in `credentials`. `retry_at` gives the automatic recovery deadline and is omitted when all models are paused. `POST /accounts/models/resume` accepts the listed `file_id` and `model` to resume a paused combination. `POST /models/priority` accepts `model` (`<vendor>:<official model ID>`) and an integer `priority` from `0` to `9`.
 
 ## Migration
 
@@ -245,18 +248,18 @@ On macOS, use a native C compiler and name the output `freecredits2api.dylib`. I
 
 ### Package Installation Archives
 
-Use `scripts/packstore` to produce `freecredits2api_<version>_<os>_<arch>.zip`. The archive contains a single shared library. This example packages the `0.2.4` Linux amd64 build.
+Use `scripts/packstore` to produce `freecredits2api_<version>_<os>_<arch>.zip`. The archive contains a single shared library. This example packages the `0.2.5` Linux amd64 build.
 
 ```bash
 go run ./scripts/packstore -lib dist/freecredits2api.so -id freecredits2api \
-  -version 0.2.4 -goos linux -goarch amd64 -out-dir dist/release-v0.2.4
+  -version 0.2.5 -goos linux -goarch amd64 -out-dir dist/release-v0.2.5
 ```
 
 For Windows amd64, use the `.dll` and `-goos windows -goarch amd64`. For Linux arm64, use the arm64 `.so` and `-goarch arm64`. After packaging all targets, generate the checksums for the version directory and copy the matching `registry.json` into it.
 
 ```bash
-go run ./scripts/packstore -checksums-dir dist/release-v0.2.4
-cp registry.json dist/release-v0.2.4/
+go run ./scripts/packstore -checksums-dir dist/release-v0.2.5
+cp registry.json dist/release-v0.2.5/
 ```
 
 ### Docker Build

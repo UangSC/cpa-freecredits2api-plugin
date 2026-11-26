@@ -22,7 +22,7 @@ FreeCredits2API 是面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProx
 
 - **统一 API 接入**：通过 CPA 提供 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 接口，支持普通与流式请求。
 - **多账号管理**：提供 OAuth、短信验证、API Key 和凭证导入等接入方式，支持账号别名、凭证更新与批量管理。
-- **模型管理**：支持模型发现、启停、自定义别名、渠道标识与上下文设置，接入 CPA 的多账号路由和故障转移。
+- **模型管理**：支持模型发现、启停、别名、同名模型池、模型优先级、渠道标识和上下文设置，接入 CPA 的多账号路由。
 - **模型退避**：按凭证和模型记录连续失败，支持暂停与恢复单个模型。
 - **额度与签到**：集中查看账号额度、套餐、积分和签到记录，并按供应商能力提供相关操作。
 - **任务与排程**：支持手动执行、自动签到、独立任务排程和后台队列，活动任务可通过模块扩展。
@@ -158,7 +158,8 @@ curl "$CPA_BASE_URL/v1/messages" \
 ### 管理账号与模型
 
 - **账号别名**：点击账号名称或编辑图标设置显示名称，清空后恢复上游名称。
-- **模型别名**：在模型列表中编辑对外模型 ID，清空后恢复默认值。别名保留大小写与标点；多个可用账号提供同一 ID 时，由 CPA 按路由配置选择。
+- **模型别名** 在模型列表中编辑对外模型 ID，清空后恢复默认值。多条上游模型可以共用一个对外 ID。别名保存原有大小写与标点，路由按忽略大小写的 ID 匹配。
+- **模型优先级** 用模型表里的 `0–9` 滑块为当前渠道的上游模型排序。同一凭证内，高等级先试，同等级随机。默认 `0`，保存后即用于后续请求。CPA 按自身策略选择提供该 ID 的凭证。
 - **渠道标识**：通过 `model_name_tag` 为未设置手工别名的模型添加供应商前缀或后缀。
 - **上下文设置**：支持手动编辑的模型可填写整数 token 数、`400K` 或 `1M`，清空后恢复自动值；固定上下文模型仅供查看，实际容量仍受上游限制。
 
@@ -196,15 +197,17 @@ curl "$CPA_BASE_URL/v1/messages" \
 
 未指定 `state_dir` 时，可通过环境变量 `FREECREDITS2API_PLUGIN_HOME` 指定目录，旧版状态目录环境变量保留为兼容回退。未配置目录覆盖项时，若用户主目录下已有 `.cli-proxy-api`，则使用其 `freecredits2api` 子目录，否则使用 `~/.freecredits2api-plugin`。账号凭证由 CPA 保存，插件状态目录用于保存设置、缓存和运行记录。
 
-### 模型冷却与自动停用
+### 同名模型回退与冷却
 
-推理冷却默认作用于一条凭证下的一个模型，由 CPA 调度其它可用组合。CodeBuddy `6004` 使用上游给出的恢复时间。AutoClaw `810000` 优先使用 `Retry-After`，缺省等待 24 小时。`810001` 走 CPA 的模型繁忙处理。会话失效继续走 CPA 的认证流程。
+例如，把同一凭证可调用的两个上游模型都设为 `chat-default`，优先级设为 `9` 和 `3`。CPA 选中凭证后，插件跳过停用、冷却或暂停的模型。优先模型遇到配额或限流时，插件记录它的冷却，再尝试下一候选。流式请求可在首个数据分片发出前切换，已经发出分片的请求会报告本次错误。别名下的候选全部不可用时，CPA 可继续尝试其他凭证。
 
-明确的额度、套餐或账号故障按凭证与上游模型 ID 记录连续失败。没有上游提示时，前五轮依次冷却 30 分钟、1 小时、2 小时、4 小时和 8 小时。有提示时，首次采用上游时长（配额冷却下限为 10 秒），后续从上一轮实际等待时长增长，且至少保留上游给出的等待时间。同一冷却窗口的并发失败只计一轮，正常推理重置该模型的失败计数。进度和成功记录随插件状态保存。
+推理冷却按凭证和实际失败的上游模型 ID 保存。普通可重试 `429` 和瞬时繁忙使用上游的等待提示，缺省等待 10 秒。CodeBuddy `6004` 使用上游提供的模型恢复时间。AutoClaw `810000` 优先使用 `Retry-After`，缺省等待 24 小时。会话失效由 CPA 的认证流程处理。
 
-第六轮仍失败且该模型没有成功记录时，插件暂停该凭证的这一模型。CPA 能确认只有一条启用的模型路由、它对应当前失败模型且凭证也没有成功记录时，插件通过 CPA 停用整条凭证，可在控制台重新启用。曾成功的模型继续按冷却计划恢复。
+明确的额度、套餐或账号故障单独计入模型的长期退避。缺少上游提示时，前五轮依次冷却 30 分钟、1 小时、2 小时、4 小时和 8 小时。首次有提示时至少等待 10 秒，后续从上轮实际等待时长增长并保留更长的上游提示。同一窗口内的并发失败只计一轮，窗口结束后的成功推理重置该模型的失败计数。第六轮仍失败且没有成功记录时，暂停该凭证下的这个模型，等待手动恢复。
 
-CPA 插件管理前缀 `/v0/management/plugins/freecredits2api` 下的 `GET /accounts/model-cooldowns` 可查看退避和暂停。通过 `POST /accounts/models/resume` 提交列表中的 `file_id` 和 `model` 可恢复对应模型，CPA 已记录的暂停冷却到期后会重新调度，最长约一分钟。
+只有已经确认凭证的模型清单，且当前渠道的全部启用模型均在冷却或暂停时，插件才向 CPA 报告凭证级等待。等待时间取最早的模型恢复时间。如果有模型处于手动恢复的暂停状态，CPA 最长约一分钟后重新检查。管理操作恢复一条凭证或给已冷却的别名加入可用候选时，插件同步解除 CPA 的路由等待，其他模型继续各自的冷却。若回执包含 `cooldown_sync_pending: true`，CPA 仍需等原等待结束。凭证文件的启停由账号管理控制。
+
+在 CPA 插件管理前缀 `/v0/management/plugins/freecredits2api` 下，`GET /accounts/model-cooldowns` 的 `models` 列出上游模型的退避和暂停状态，`credentials` 列出全部启用模型均被阻塞的凭证。`retry_at` 为自动恢复时间，全部暂停时省略。`POST /accounts/models/resume` 接收列表里的 `file_id` 和 `model`，恢复对应的暂停模型。`POST /models/priority` 接收 `model`（`<vendor>:<官方模型 ID>`）及整数 `priority`（`0–9`）。
 
 ## 旧版迁移
 
@@ -245,18 +248,18 @@ macOS 使用本机 C 编译器，将输出文件名设为 `freecredits2api.dylib
 
 ### 生成安装归档
 
-使用 `scripts/packstore` 生成 `freecredits2api_<版本>_<平台>_<架构>.zip`。包内只包含一个动态库。以 `0.2.4` 的 Linux amd64 构建为例。
+使用 `scripts/packstore` 生成 `freecredits2api_<版本>_<平台>_<架构>.zip`。包内只包含一个动态库。以 `0.2.5` 的 Linux amd64 构建为例。
 
 ```bash
 go run ./scripts/packstore -lib dist/freecredits2api.so -id freecredits2api \
-  -version 0.2.4 -goos linux -goarch amd64 -out-dir dist/release-v0.2.4
+  -version 0.2.5 -goos linux -goarch amd64 -out-dir dist/release-v0.2.5
 ```
 
 Windows amd64 使用 `.dll` 和 `-goos windows -goarch amd64`，Linux arm64 使用对应架构的 `.so` 和 `-goarch arm64`。全部目标打包完成后，在同一个版本目录汇总校验和，并复制该版本的 `registry.json`。
 
 ```bash
-go run ./scripts/packstore -checksums-dir dist/release-v0.2.4
-cp registry.json dist/release-v0.2.4/
+go run ./scripts/packstore -checksums-dir dist/release-v0.2.5
+cp registry.json dist/release-v0.2.5/
 ```
 
 ### Docker 构建

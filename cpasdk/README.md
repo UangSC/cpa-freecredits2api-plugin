@@ -9,7 +9,7 @@
 
 本插件使用原生 ABI `1`、RPC schema `6` 和单一认证标识 `freecredits2api`，注册实际实现的能力。控制台资源和插件管理路由通过 CPA 的 `/v0` 挂载，宿主配置写入优先使用 `/v8/management/config`。[CPA v8.1.1 ABI](https://github.com/router-for-me/CLIProxyAPI/blob/v8.1.1/sdk/pluginabi/types.go) · [CPA v8.1.1 管理路由](https://github.com/router-for-me/CLIProxyAPI/blob/v8.1.1/internal/api/server_management_v8.go)
 
-执行失败信封和流式错误详情使用同一份 `pluginabi.Error`，默认由 CPA 按凭证和模型冷却。只有 `host.auth.models` 能确认当前失败模型是该凭证唯一启用路由时，达到停用阈值才会考虑停用整条凭证。其余场景的自动暂停限于当前模型。[CPA v8.0.77 错误契约](https://github.com/router-for-me/CLIProxyAPI/blob/v8.0.77/sdk/pluginabi/types.go) · [凭证模型回调](https://github.com/router-for-me/CLIProxyAPI/blob/v8.0.77/internal/pluginhost/auth_callbacks.go#L137)
+执行失败信封和流关闭详情使用同一份 `pluginabi.Error`。插件从 `model.for_auth` 保留合并前的凭证模型清单，按实际失败的上游模型记录冷却。只有确认清单中的全部启用模型都冷却或暂停时，才以 `CredentialScoped` 通知 CPA，等待时间取最早恢复时间。管理操作恢复凭证或给已冷却的别名加入可用候选时，通过 `host.routing.reset_cooldown` 清除对应凭证的宿主等待，插件继续执行各模型的冷却。已开始输出的流遇到限流且同名候选仍可用时，用 `request_scoped` 结束当前请求，让后续请求继续使用可用候选。 [CPA v8.0.77 错误契约](https://github.com/router-for-me/CLIProxyAPI/blob/v8.0.77/sdk/pluginabi/types.go) · [CPA 冷却重置回调](https://github.com/router-for-me/CLIProxyAPI/blob/v8.0.77/internal/pluginhost/routing_callbacks.go)
 
 ## 宿主请求缓冲区契约（`cliproxy_plugin_api.call` 的 `request`）
 

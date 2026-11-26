@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"cpa-freecredits2api-plugin/cpasdk/pluginapi"
 	"cpa-freecredits2api-plugin/internal/core"
@@ -24,6 +25,7 @@ type consoleModel struct {
 	Realm                 string   `json:"realm"`
 	Name                  string   `json:"name,omitempty"`
 	Alias                 string   `json:"alias,omitempty"`
+	Priority              int      `json:"priority"`
 	Description           string   `json:"description,omitempty"`
 	ContextLength         int64    `json:"context_length,omitempty"`
 	UpstreamContextLength int64    `json:"upstream_context_length"`
@@ -90,6 +92,7 @@ func (s *Service) handleModelsList(req pluginapi.ManagementRequest) pluginapi.Ma
 		}
 		models[index].Disabled = manager.IsDisabled(models[index].VendorID, models[index].ID)
 		models[index].Alias = manager.AliasFor(models[index].VendorID, models[index].ID)
+		models[index].Priority = manager.ModelPriority(models[index].VendorID, models[index].ID)
 		models[index].UpstreamContextLength = models[index].ContextLength
 		models[index].ContextOverride = manager.ContextOverride(models[index].VendorID, models[index].ID)
 		if models[index].ContextOverride > 0 {
@@ -228,6 +231,10 @@ func (s *Service) modelToggleHandler(req pluginapi.ManagementRequest) pluginapi.
 	if len(targets) == 0 {
 		return JSONResponse(http.StatusBadRequest, map[string]any{"ok": false, "error": "请先选择要操作的模型"})
 	}
+	var previous []credentialCooldownStatus
+	if !body.Disabled {
+		previous = s.coolingCredentials(s.deps.State().ModelCooldowns, time.Now())
+	}
 	stored, errSave := s.deps.Model().SetDisabled(targets, body.Disabled)
 	if errSave != nil {
 		logger.Error("save disabled models failed: %v", errSave)
@@ -242,8 +249,9 @@ func (s *Service) modelToggleHandler(req pluginapi.ManagementRequest) pluginapi.
 	logger.Info("models %s: %d 个（%s）", verb, len(targets), strings.Join(targets, ", "))
 	return JSONResponse(http.StatusOK, map[string]any{
 		"ok": true, "changed": len(targets), "disabled": body.Disabled,
-		"disabled_models": stored,
-		"message":         "已" + verb + " " + strconv.Itoa(len(targets)) + " 个模型（调用即时生效）",
+		"disabled_models":       stored,
+		"message":               "已" + verb + " " + strconv.Itoa(len(targets)) + " 个模型",
+		"cooldown_sync_pending": s.releaseCredentialCooldowns(req, previous),
 	})
 }
 
@@ -273,14 +281,51 @@ func (s *Service) modelAliasHandler(req pluginapi.ManagementRequest) pluginapi.M
 	}
 	manager := s.deps.Model()
 	previous := manager.AliasFor(vendorID, bare)
+	var blocked map[string]bool
+	if alias != "" && !strings.EqualFold(previous, alias) {
+		blocked = s.coolingAliasCredentials(vendorID, alias)
+	}
 	if err := manager.SetAlias(vendorID, bare, alias); err != nil {
 		logger.Error("save model alias %s:%s failed: %v", vendorID, bare, err)
 		return JSONResponse(http.StatusInternalServerError, map[string]any{
 			"ok": false, "error": "模型别名写盘失败，原设置已保留，请检查状态目录权限和磁盘空间。",
 		})
 	}
+	if len(blocked) > 0 {
+		// 同名候选新增后，先清理由旧候选留下的宿主等待。实际模型冷却还由插件保护。
+		for fileID := range s.coolingAliasCredentials(vendorID, alias) {
+			delete(blocked, fileID)
+		}
+	}
 	logger.Info("model alias %s:%s: %q -> %q", vendorID, bare, previous, alias)
 	return JSONResponse(http.StatusOK, map[string]any{
 		"ok": true, "model": aliasScopedKey(vendorID, bare), "alias": alias, "restart_pending": true,
+		"cooldown_sync_pending": s.resetHostRoutingCooldowns(req, blocked),
 	})
+}
+
+func (s *Service) modelPriorityHandler(req pluginapi.ManagementRequest) pluginapi.ManagementResponse {
+	var body struct {
+		Model    string `json:"model"`
+		Priority *int   `json:"priority"`
+	}
+	decoded, err := decodeRequestInto(req.Body, body)
+	if err != nil {
+		return BadJSONRequestResponse()
+	}
+	catalog := s.deps.Model()
+	vendorID, modelID := catalog.VendorForAliasScope(decoded.Model)
+	if vendorID == "" || strings.TrimSpace(modelID) == "" {
+		return JSONResponse(http.StatusBadRequest, map[string]any{"ok": false, "error": "model 必须是 <vendor>:<官方模型 ID> 形式"})
+	}
+	if decoded.Priority == nil || *decoded.Priority < 0 || *decoded.Priority > MaxModelPriority {
+		return JSONResponse(http.StatusBadRequest, map[string]any{"ok": false, "error": "priority 必须是 0 到 9 之间的整数"})
+	}
+	if err := catalog.SetModelPriority(vendorID, modelID, *decoded.Priority); err != nil {
+		logger.Error("save model priority %s:%s failed: %v", vendorID, modelID, err)
+		return JSONResponse(http.StatusInternalServerError, map[string]any{
+			"ok": false, "error": "模型优先级写盘失败，原设置已保留，请检查状态目录权限和磁盘空间。",
+		})
+	}
+	return JSONResponse(http.StatusOK, map[string]any{"ok": true, "model": aliasScopedKey(vendorID, modelID), "priority": *decoded.Priority})
 }

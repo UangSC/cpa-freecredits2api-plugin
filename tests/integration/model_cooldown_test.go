@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,20 +16,20 @@ import (
 	"cpa-freecredits2api-plugin/internal/core"
 )
 
-func TestExecutorModelCooldownAndAutomaticStop(t *testing.T) {
+func TestExecutorModelCooldownAndCredentialScope(t *testing.T) {
 	const model = "cn:glm-5.2"
 	const otherModel = "cn:deepseek-v4.1-flash"
 	for _, tc := range []struct {
 		name      string
 		models    []string
 		knownGood bool
-		disabled  bool
+		scoped    bool
 		paused    bool
 	}{
-		{name: "single model disables the unverified credential", models: []string{model}, disabled: true},
+		{name: "single model cools the credential without disabling it", models: []string{model}, scoped: true, paused: true},
 		{name: "multiple models pause only the failing model", models: []string{model, otherModel}, paused: true},
-		{name: "missing registry evidence cannot disable the credential", paused: true},
-		{name: "successful model stays enabled", models: []string{model}, knownGood: true},
+		{name: "missing registry evidence keeps cooldown model scoped", paused: true},
+		{name: "successful model keeps timed backoff", models: []string{model}, knownGood: true, scoped: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			host := installFakeHost(t)
@@ -40,12 +41,22 @@ func TestExecutorModelCooldownAndAutomaticStop(t *testing.T) {
 			}
 			host.addAccount("cooldown-index", fileName, credentialJSON)
 			host.SetAuthFilePath("cooldown-index", authPath)
-			host.SetAuthModels("cooldown-index", tc.models...)
 			clock := time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC)
 			cfg := app.DefaultConfig()
 			cfg.StateDir = t.TempDir()
 			cfg.LogToFile = false
 			cfg.LogLevel = "error"
+			upstreamModels := make([]map[string]string, 0, len(tc.models))
+			for _, id := range tc.models {
+				upstreamModels = append(upstreamModels, map[string]string{"id": strings.TrimPrefix(id, "cn:")})
+			}
+			configBody := string(mustMarshal(map[string]any{"code": 0, "data": map[string]any{"models": upstreamModels}}))
+			host.setUpstream(func(_ string, url string, _ string) fakeUpstreamResponse {
+				if strings.Contains(url, "/v3/config") {
+					return fakeUpstreamResponse{Status: http.StatusOK, Body: configBody}
+				}
+				return fakeUpstreamResponse{Status: http.StatusTooManyRequests, Body: `{"error":{"data":{"code":14018,"msg":"Credits exhausted"}}}`}
+			})
 			start := func() *app.App {
 				instance, err := app.New(app.Options{Factories: app.BuiltinFactories(), Now: func() time.Time { return clock }})
 				if err != nil {
@@ -56,6 +67,14 @@ func TestExecutorModelCooldownAndAutomaticStop(t *testing.T) {
 				}
 				if _, err := instance.LoadState(cfg); err != nil {
 					t.Fatal(err)
+				}
+				if len(tc.models) > 0 {
+					_, err = instance.HandleMethod(pluginabi.MethodModelForAuth, mustMarshal(map[string]any{
+						"AuthID": fileName, "host_callback_id": testCallbackID,
+					}))
+					if err != nil {
+						t.Fatal(err)
+					}
 				}
 				t.Cleanup(instance.StopBackgroundWork)
 				return instance
@@ -78,10 +97,13 @@ func TestExecutorModelCooldownAndAutomaticStop(t *testing.T) {
 			}
 			if tc.knownGood {
 				checkSuccess(request)
+				host.setUpstream(func(_ string, url string, _ string) fakeUpstreamResponse {
+					if strings.Contains(url, "/v3/config") {
+						return fakeUpstreamResponse{Status: http.StatusOK, Body: configBody}
+					}
+					return fakeUpstreamResponse{Status: http.StatusTooManyRequests, Body: `{"error":{"data":{"code":14018,"msg":"Credits exhausted"}}}`}
+				})
 			}
-			host.setUpstream(func(string, string, string) fakeUpstreamResponse {
-				return fakeUpstreamResponse{Status: http.StatusTooManyRequests, Body: `{"error":{"data":{"code":14018,"msg":"Credits exhausted"}}}`}
-			})
 			checkFailure := func() *pluginabi.Error {
 				t.Helper()
 				_, err := instance.HandleMethod(pluginabi.MethodExecutorExecute, mustMarshal(request))
@@ -92,10 +114,10 @@ func TestExecutorModelCooldownAndAutomaticStop(t *testing.T) {
 				if decodeErr := json.Unmarshal(core.ErrorEnvelopeFromError(err), &envelope); decodeErr != nil {
 					t.Fatal(decodeErr)
 				}
-				if failure := envelope.Error; failure != nil && failure.HTTPStatus == http.StatusTooManyRequests && !failure.CredentialScoped {
+				if failure := envelope.Error; failure != nil && failure.HTTPStatus == http.StatusTooManyRequests && failure.CredentialScoped == tc.scoped {
 					return failure
 				}
-				t.Fatalf("expected a model-scoped 429, got %v", err)
+				t.Fatalf("expected a 429 with credential_scoped=%v, got %+v", tc.scoped, envelope.Error)
 				return nil
 			}
 			for index, expected := range []time.Duration{30 * time.Minute, time.Hour, 2 * time.Hour, 4 * time.Hour, 8 * time.Hour} {
@@ -116,8 +138,8 @@ func TestExecutorModelCooldownAndAutomaticStop(t *testing.T) {
 				clock = clock.Add(expected)
 			}
 			checkFailure()
-			if disabled := host.SnapshotAuthFiles()[0].Disabled; disabled != tc.disabled {
-				t.Fatalf("credential disabled = %v, want %v", disabled, tc.disabled)
+			if host.SnapshotAuthFiles()[0].Disabled {
+				t.Fatal("automatic cooling disabled the credential")
 			}
 			cooldown := instance.SnapshotState().ModelCooldowns["workbuddycn-cooldown"]["glm-5.2"]
 			if cooldown.Paused != tc.paused {
@@ -156,16 +178,83 @@ func TestExecutorModelRateLimitDoesNotBlockOtherModels(t *testing.T) {
 		return fakeUpstreamResponse{Status: http.StatusTooManyRequests, Body: `{"code":6004,"msg":"model frequency limit"}`}
 	})
 	for _, model := range []string{"cn:hy4flash-free", "cn:deepseek-v4.1-flash"} {
-		_, err := testApp.HandleMethod(pluginabi.MethodExecutorExecute, mustMarshal(app.ExecutorRPCRequest{
+		request := mustMarshal(app.ExecutorRPCRequest{
 			HostCallbackID:  testCallbackID,
 			ExecutorRequest: pluginapi.ExecutorRequest{AuthID: "model-limit-index", Model: model, Payload: []byte(`{"messages":[]}`)},
-		}))
+		})
+		_, err := testApp.HandleMethod(pluginabi.MethodExecutorExecute, request)
 		var failure *core.PluginError
-		if !errors.As(err, &failure) || failure.Code != "upstream_soft_rate" || failure.ABIError().CredentialScoped {
+		if !errors.As(err, &failure) || failure.Code != "upstream_soft_rate" || failure.ABIError().CredentialScoped || failure.RetryAfterSeconds != 10 {
 			t.Fatalf("model %s: expected model-only rate limit, got %v", model, err)
+		}
+		calls := host.UpstreamCalls()
+		if _, err = testApp.HandleMethod(pluginabi.MethodExecutorExecute, request); !errors.As(err, &failure) || host.UpstreamCalls() != calls {
+			t.Fatalf("model %s: repeated request reached the upstream during rate limiting", model)
 		}
 	}
 	if calls := host.UpstreamCalls(); calls != 2 {
 		t.Fatalf("expected both models to reach upstream, got %d calls", calls)
+	}
+}
+
+func TestExecutorModelPoolKeepsStartedStream(t *testing.T) {
+	host := installFakeHost(t)
+	setupTestPlugin(t)
+	const fileName = "workbuddycn-stream-pool.json"
+	host.addAccount("stream-pool-index", fileName, sampleCredentialJSON("cn", "stream-pool"))
+	host.setUpstream(func(_ string, url, body string) fakeUpstreamResponse {
+		if strings.Contains(url, "/v3/config") {
+			return fakeUpstreamResponse{Status: http.StatusOK, Body: `{"code":0,"data":{"models":[{"id":"glm-5.2"},{"id":"deepseek-v4.1-flash"}]}}`}
+		}
+		var request struct{ Model string }
+		if err := json.Unmarshal([]byte(body), &request); err != nil {
+			return fakeUpstreamResponse{Status: http.StatusBadRequest}
+		}
+		switch request.Model {
+		case "glm-5.2":
+			return fakeUpstreamResponse{Status: http.StatusOK, Body: "data: {\"choices\":[{\"delta\":{\"content\":\"primary output\"}}]}\n\n" +
+				"data: {\"error\":{\"data\":{\"code\":14018,\"msg\":\"Credits exhausted\"}}}\n\n"}
+		case "deepseek-v4.1-flash":
+			return fakeUpstreamResponse{Status: http.StatusOK, Body: "data: {\"choices\":[{\"delta\":{\"content\":\"backup output\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"}
+		default:
+			return fakeUpstreamResponse{Status: http.StatusNotFound}
+		}
+	})
+	for _, id := range []string{"glm-5.2", "deepseek-v4.1-flash"} {
+		response := managementCallWithBody(t, http.MethodPost, "/models/alias", map[string]string{
+			"model": "workbuddycn:" + id, "alias": "shared-stream",
+		})
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("save alias: %s", response.Body)
+		}
+	}
+	response := managementCallWithBody(t, http.MethodPost, "/models/priority", map[string]any{
+		"model": "workbuddycn:glm-5.2", "priority": 9,
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("save priority: %s", response.Body)
+	}
+	callMethod(t, pluginabi.MethodModelForAuth, map[string]any{"AuthID": fileName, "host_callback_id": testCallbackID})
+	request := app.ExecutorRPCRequest{
+		HostCallbackID: testCallbackID,
+		StreamID:       "stream-pool",
+		ExecutorRequest: pluginapi.ExecutorRequest{
+			AuthID: fileName, Model: "shared-stream", Stream: true, Payload: []byte(`{"model":"shared-stream","messages":[]}`),
+		},
+	}
+	calls := host.UpstreamCalls()
+	callMethod(t, pluginabi.MethodExecutorExecuteStream, request)
+	if !waitFor(t, 2*time.Second, func() bool { return len(host.closedStreams()) == 1 }) {
+		t.Fatal("stream did not close")
+	}
+	if host.UpstreamCalls() != calls+1 || !strings.Contains(strings.Join(host.emittedChunks(), ""), "primary output") ||
+		!strings.Contains(strings.Join(host.streamErrors(), ""), "Credits exhausted") {
+		t.Fatalf("started stream switched candidates or lost its error: chunks=%v errors=%v", host.emittedChunks(), host.streamErrors())
+	}
+	request.Stream = false
+	raw := callMethod(t, pluginabi.MethodExecutorExecute, request)
+	var result pluginapi.ExecutorResponse
+	if err := json.Unmarshal(raw, &result); err != nil || !strings.Contains(string(result.Payload), "backup output") {
+		t.Fatalf("next request did not use the healthy candidate: %s", raw)
 	}
 }

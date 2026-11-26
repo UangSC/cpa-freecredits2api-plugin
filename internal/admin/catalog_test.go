@@ -86,18 +86,21 @@ func TestExpandKeysByVendorAndRegion(t *testing.T) {
 	}
 }
 
-func TestAliasUniquenessAndResolve(t *testing.T) {
+func TestSharedAliasPreservesBindings(t *testing.T) {
 	c := newTestCatalog(t)
 	c.SetAlias("workbuddycn", "glm-5.2", "glm-max")
 	if got := c.ResolveOutboundModel("workbuddycn", "glm-max"); got != "glm-5.2" {
 		t.Fatalf("resolve = %q", got)
 	}
 	c.SetAlias("workbuddycn", "glm-5.3", "glm-max")
-	if got := c.ResolveOutboundModel("workbuddycn", "glm-max"); got != "glm-5.3" {
-		t.Fatalf("rebind resolve = %q", got)
+	if err := c.SetModelPriority("workbuddycn", "glm-5.3", 9); err != nil {
+		t.Fatal(err)
 	}
-	if c.AliasFor("workbuddycn", "glm-5.2") != "" {
-		t.Fatal("old alias should be replaced")
+	if got := c.ResolveOutboundModel("workbuddycn", "glm-max"); got != "glm-5.3" {
+		t.Fatalf("priority resolve = %q", got)
+	}
+	if c.AliasFor("workbuddycn", "glm-5.2") != "glm-max" {
+		t.Fatal("adding a candidate removed the previous alias")
 	}
 }
 
